@@ -15,6 +15,9 @@ export default function App() {
   const selectedElementsRef = useRef([]);
   const dragStartRef = useRef(null);
   const dragOffsetRef = useRef([]);
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef(null);
+  const lastPanRef = useRef({ x: 0, y: 0 });
 
   // UI state
   const [color, setColor] = useState('#000000');
@@ -23,6 +26,10 @@ export default function App() {
   const [tool, setTool] = useState('pen');
   const [showGrid, setShowGrid] = useState(true);
   const [selectedCount, setSelectedCount] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
   const eraseSize = 15; // fixed eraser size
   const [version, setVersion] = useState(0);
   function bump() { setVersion(v => v + 1); }
@@ -76,23 +83,38 @@ export default function App() {
   /* ---------- Drawing helpers ---------- */
   function getPos(evt) {
     const rect = canvasRef.current.getBoundingClientRect();
-    return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+    const x = (evt.clientX - rect.left - panX) / zoom;
+    const y = (evt.clientY - rect.top - panY) / zoom;
+    return { x, y };
+  }
+
+  function getScreenPos(worldPos) {
+    return {
+      x: worldPos.x * zoom + panX,
+      y: worldPos.y * zoom + panY
+    };
   }
 
   function drawGrid(ctx, canvas) {
     if (!showGrid) return;
     const gridSize = 20;
     ctx.strokeStyle = '#e0e0e0';
-    ctx.lineWidth = 0.5;
+    ctx.lineWidth = 0.5 / zoom;
     ctx.beginPath();
 
-    for (let x = 0; x <= canvas.width; x += gridSize) {
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
+    // Calculate visible area in world coordinates
+    const startX = Math.floor(-panX / zoom / gridSize) * gridSize;
+    const endX = Math.ceil((canvas.width - panX) / zoom / gridSize) * gridSize;
+    const startY = Math.floor(-panY / zoom / gridSize) * gridSize;
+    const endY = Math.ceil((canvas.height - panY) / zoom / gridSize) * gridSize;
+
+    for (let x = startX; x <= endX; x += gridSize) {
+      ctx.moveTo(x, startY);
+      ctx.lineTo(x, endY);
     }
-    for (let y = 0; y <= canvas.height; y += gridSize) {
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
+    for (let y = startY; y <= endY; y += gridSize) {
+      ctx.moveTo(startX, y);
+      ctx.lineTo(endX, y);
     }
     ctx.stroke();
   }
@@ -212,6 +234,11 @@ export default function App() {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // Save context and apply transformations
+    ctx.save();
+    ctx.translate(panX, panY);
+    ctx.scale(zoom, zoom);
+
     // Draw grid
     drawGrid(ctx, canvas);
 
@@ -219,7 +246,7 @@ export default function App() {
     for (const s of strokesRef.current) {
       ctx.lineJoin = ctx.lineCap = 'round';
       ctx.strokeStyle = s.color || '#000';
-      ctx.lineWidth = s.width || 1;
+      ctx.lineWidth = (s.width || 1) / zoom; // Adjust line width for zoom
 
       if (s.type === 'pen') drawPenStroke(ctx, s);
       else if (s.type === 'rect') drawRect(ctx, s);
@@ -231,6 +258,9 @@ export default function App() {
     if (tool === 'select') {
       drawSelectionBox(ctx, selectedElementsRef.current);
     }
+
+    // Restore context
+    ctx.restore();
   }
 
   function drawPreview(ctx, preview) {
@@ -277,6 +307,15 @@ export default function App() {
       canvas.setPointerCapture?.(e.pointerId);
       pointerIdRef.current = e.pointerId;
       const p = getPos(e);
+
+      // Handle panning with middle mouse button or space+left click
+      if (e.button === 1 || (e.button === 0 && isSpacePressed)) {
+        isPanningRef.current = true;
+        panStartRef.current = { x: e.clientX, y: e.clientY };
+        lastPanRef.current = { x: panX, y: panY };
+        canvas.style.cursor = 'grabbing';
+        return;
+      }
 
       if (tool === 'select') {
         // Find element under cursor
@@ -353,6 +392,15 @@ export default function App() {
     }
 
     function onPointerMove(e) {
+      // Handle panning
+      if (isPanningRef.current && e.pointerId === pointerIdRef.current) {
+        const deltaX = e.clientX - panStartRef.current.x;
+        const deltaY = e.clientY - panStartRef.current.y;
+        setPanX(lastPanRef.current.x + deltaX);
+        setPanY(lastPanRef.current.y + deltaY);
+        return;
+      }
+
       const p = getPos(e);
 
       if (tool === 'select' && drawingRef.current && e.pointerId === pointerIdRef.current) {
@@ -412,6 +460,15 @@ export default function App() {
 
     function onPointerUp(e) {
       if (e.pointerId !== pointerIdRef.current) return;
+
+      // Handle panning end
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        panStartRef.current = null;
+        canvas.style.cursor = 'default';
+        return;
+      }
+
       drawingRef.current = false;
       pointerIdRef.current = null;
 
@@ -450,14 +507,20 @@ export default function App() {
     };
   }, [tool, color, width]);
 
-  // Redraw when grid setting changes
+  // Redraw when grid setting changes or zoom/pan changes
   useEffect(() => {
     redraw();
-  }, [showGrid]);
+  }, [showGrid, zoom, panX, panY]);
 
   // Keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e) {
+      if (e.key === ' ' && !isSpacePressed) {
+        e.preventDefault();
+        setIsSpacePressed(true);
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedElementsRef.current.length > 0) {
           e.preventDefault();
@@ -480,13 +543,140 @@ export default function App() {
           updateSelection([...strokesRef.current]);
           redraw();
           bump();
+        } else if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          zoomIn();
+        } else if (e.key === '-') {
+          e.preventDefault();
+          zoomOut();
+        } else if (e.key === '0') {
+          e.preventDefault();
+          resetView();
+        } else if (e.key === '1') {
+          e.preventDefault();
+          zoomToFit();
         }
       }
     }
 
+    function handleKeyUp(e) {
+      if (e.key === ' ') {
+        setIsSpacePressed(false);
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, []);
+
+  // Wheel event for zooming and trackpad panning
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    function handleWheel(e) {
+      e.preventDefault(); // Always prevent default to avoid page scroll
+
+      if (e.ctrlKey || e.metaKey) {
+        // Zoom functionality with Ctrl/Cmd + wheel
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const worldPos = {
+          x: (mouseX - panX) / zoom,
+          y: (mouseY - panY) / zoom
+        };
+
+        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = Math.max(0.1, Math.min(5, zoom * zoomFactor));
+
+        const newPanX = mouseX - worldPos.x * newZoom;
+        const newPanY = mouseY - worldPos.y * newZoom;
+
+        setZoom(newZoom);
+        setPanX(newPanX);
+        setPanY(newPanY);
+      } else {
+        // Two-finger trackpad scrolling for panning
+        const panSpeed = 1; // Adjust this value to control pan sensitivity
+
+        // deltaX for horizontal scrolling, deltaY for vertical scrolling
+        const deltaX = e.deltaX * panSpeed;
+        const deltaY = e.deltaY * panSpeed;
+
+        setPanX(prevPanX => prevPanX - deltaX);
+        setPanY(prevPanY => prevPanY - deltaY);
+      }
+    }
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleWheel);
+  }, [zoom, panX, panY]);
+
+  /* ---------- Pan and Zoom ---------- */
+  function zoomIn() {
+    setZoom(prevZoom => Math.min(prevZoom * 1.2, 5));
+  }
+
+  function zoomOut() {
+    setZoom(prevZoom => Math.max(prevZoom / 1.2, 0.1));
+  }
+
+  function resetView() {
+    setZoom(1);
+    setPanX(0);
+    setPanY(0);
+  }
+
+  function zoomToFit() {
+    if (strokesRef.current.length === 0) {
+      resetView();
+      return;
+    }
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    strokesRef.current.forEach(stroke => {
+      if (stroke.type === 'pen') {
+        stroke.points.forEach(pt => {
+          minX = Math.min(minX, pt.x);
+          minY = Math.min(minY, pt.y);
+          maxX = Math.max(maxX, pt.x);
+          maxY = Math.max(maxY, pt.y);
+        });
+      } else if (stroke.start && stroke.end) {
+        minX = Math.min(minX, stroke.start.x, stroke.end.x);
+        minY = Math.min(minY, stroke.start.y, stroke.end.y);
+        maxX = Math.max(maxX, stroke.start.x, stroke.end.x);
+        maxY = Math.max(maxY, stroke.start.y, stroke.end.y);
+      }
+    });
+
+    const canvas = canvasRef.current;
+    const padding = 50;
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+    const canvasWidth = canvas.offsetWidth - padding * 2;
+    const canvasHeight = canvas.offsetHeight - padding * 2;
+
+    const scaleX = canvasWidth / contentWidth;
+    const scaleY = canvasHeight / contentHeight;
+    const newZoom = Math.min(scaleX, scaleY, 2);
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const newPanX = canvas.offsetWidth / 2 - centerX * newZoom;
+    const newPanY = canvas.offsetHeight / 2 - centerY * newZoom;
+
+    setZoom(newZoom);
+    setPanX(newPanX);
+    setPanY(newPanY);
+  }
 
   /* ---------- File Operations ---------- */
   function saveAsJSON() {
@@ -738,6 +928,17 @@ export default function App() {
           <button onClick={clear}>🧹 Clear All</button>
         </div>
 
+        {/* Zoom Controls */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginRight: 12, borderRight: '1px solid #ccc', paddingRight: 12 }}>
+          <button onClick={zoomOut} title="Zoom Out">🔍-</button>
+          <span style={{ fontSize: '12px', minWidth: 45, textAlign: 'center' }}>
+            {Math.round(zoom * 100)}%
+          </span>
+          <button onClick={zoomIn} title="Zoom In">🔍+</button>
+          <button onClick={resetView} title="Reset View">🎯</button>
+          <button onClick={zoomToFit} title="Zoom to Fit">📐</button>
+        </div>
+
         {/* View Options */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '14px' }}>
@@ -751,12 +952,17 @@ export default function App() {
         </div>
 
         <div style={{ marginLeft: 'auto', opacity: 0.8, fontSize: '14px' }}>
-          Tool: <strong>{tool}</strong>
-          {selectedCount > 0 && (
-            <span style={{ marginLeft: 8 }}>
-              Selected: {selectedCount}
-            </span>
-          )}
+          <div>
+            Tool: <strong>{tool}</strong>
+            {selectedCount > 0 && (
+              <span style={{ marginLeft: 8 }}>
+                Selected: {selectedCount}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '11px', opacity: 0.7, marginTop: 2 }}>
+            {isSpacePressed ? 'Space: Pan mode active' : 'Two-finger scroll: Pan • Ctrl+wheel: Zoom • Space+drag: Pan • Middle click: Pan'}
+          </div>
         </div>
       </div>
 
@@ -770,7 +976,13 @@ export default function App() {
 
       <canvas
         ref={canvasRef}
-        style={{ flex: 1, touchAction: 'none', display: 'block', background: '#fff', cursor: tool === 'select' ? 'default' : 'crosshair' }}
+        style={{
+          flex: 1,
+          touchAction: 'none',
+          display: 'block',
+          background: '#fff',
+          cursor: isSpacePressed ? 'grab' : (tool === 'select' ? 'default' : 'crosshair')
+        }}
       />
     </div>
   );
