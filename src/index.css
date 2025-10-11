@@ -1,13 +1,99 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  /* Official Excalidraw Light Theme Colors */
+  --color-primary: #5f55ee;
+  --color-primary-darker: #4c63d2;
+  --color-primary-light: #7c3aed;
+  --color-primary-contrast: #ffffff;
+
+  /* Canvas & Background */
+  --color-canvas-background: #ffffff;
+  --color-canvas-background-secondary: #f8f9fa;
+
+  /* UI Surfaces */
+  --color-surface-lowest: #ffffff;
+  --color-surface-low: #f8f9fa;
+  --color-surface-medium: #f1f3f4;
+  --color-surface-high: #e8eaed;
+  --color-surface-higher: #dadce0;
+
+  /* Text Colors */
+  --color-text-primary: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-text-tertiary: #9ca3af;
+  --color-text-accent: #5f55ee;
+
+  /* Border Colors */
+  --color-border-light: #e5e7eb;
+  --color-border-medium: #d1d5db;
+  --color-border-dark: #9ca3af;
+  --color-border-focus: #5f55ee;
+
+  /* Drawing Colors - Official Excalidraw Palette */
+  --color-palette-black: #1e1e1e;
+  --color-palette-gray: #6b7280;
+  --color-palette-red: #e03131;
+  --color-palette-pink: #e64980;
+  --color-palette-grape: #be4bdb;
+  --color-palette-violet: #7c3aed;
+  --color-palette-indigo: #4c63d2;
+  --color-palette-blue: #1971c2;
+  --color-palette-cyan: #0891b2;
+  --color-palette-teal: #0d9488;
+  --color-palette-green: #2f9e44;
+  --color-palette-lime: #66a80f;
+  --color-palette-yellow: #fab005;
+  --color-palette-orange: #fd7e14;
+
+  /* Shadows */
+  --color-shadow-light: rgba(0, 0, 0, 0.04);
+  --color-shadow-medium: rgba(0, 0, 0, 0.08);
+  --color-shadow-strong: rgba(0, 0, 0, 0.12);
+  --color-shadow-strongest: rgba(0, 0, 0, 0.16);
+
+  /* Grid */
+  --color-grid: rgba(0, 0, 0, 0.1);
+
+  /* Selection */
+  --color-selection-element: #5f55ee;
+  --color-selection-element-secondary: rgba(95, 85, 238, 0.1);
+
+  /* Typography */
+  font-family: "Virgil", "Segoe UI Emoji", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #213547;
-  background-color: #ffffff;
+  color: var(--color-text-primary);
+  background-color: var(--color-canvas-background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+  --color-canvas-background: #121212;
+  --color-canvas-background-secondary: #1e1e1e;
+
+  --color-surface-lowest: #1e1e1e;
+  --color-surface-low: #2d2d2d;
+  --color-surface-medium: #3a3a3a;
+  --color-surface-high: #4a4a4a;
+  --color-surface-higher: #5a5a5a;
+
+  --color-text-primary: #f3f4f6;
+  --color-text-secondary: #d1d5db;
+  --color-text-tertiary: #9ca3af;
+
+  --color-border-light: #374151;
+  --color-border-medium: #4b5563;
+  --color-border-dark: #6b7280;
+
+  --color-shadow-light: rgba(0, 0, 0, 0.2);
+  --color-shadow-medium: rgba(0, 0, 0, 0.3);
+  --color-shadow-strong: rgba(0, 0, 0, 0.4);
+  --color-shadow-strongest: rgba(0, 0, 0, 0.5);
+
+  --color-grid: rgba(255, 255, 255, 0.1);
 }
 
 * {
@@ -19,72 +105,370 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow: hidden;
+  background-color: var(--color-canvas-background);
 }
 
+/* Excalidraw-style Buttons */
 button {
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  padding: 6px 12px;
-  font-size: 13px;
+  border-radius: 8px;
+  border: 1.5px solid var(--color-border-medium);
+  padding: 8px 12px;
+  font-size: 14px;
   font-weight: 500;
   font-family: inherit;
-  background-color: #fff;
+  background-color: var(--color-surface-lowest);
+  color: var(--color-text-primary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.1s ease;
   white-space: nowrap;
+  box-shadow: 0 1px 2px var(--color-shadow-light);
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  position: relative;
 }
 
 button:hover {
-  background-color: #f5f5f5;
-  border-color: #999;
+  background-color: var(--color-surface-low);
+  border-color: var(--color-border-dark);
+  box-shadow: 0 2px 4px var(--color-shadow-medium);
 }
 
 button:active {
-  background-color: #e5e5e5;
+  background-color: var(--color-surface-medium);
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px var(--color-shadow-light);
 }
 
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 1px 2px var(--color-shadow-light);
+}
+
+button:disabled:hover {
+  background-color: var(--color-surface-lowest);
+  border-color: var(--color-border-medium);
+  transform: none;
+}
+
+/* Active Tool Button - Excalidraw Style */
+.tool-active {
+  background-color: var(--color-primary) !important;
+  color: var(--color-primary-contrast) !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 2px 8px rgba(95, 85, 238, 0.25) !important;
+}
+
+.tool-active:hover {
+  background-color: var(--color-primary-darker) !important;
+  border-color: var(--color-primary-darker) !important;
+  box-shadow: 0 3px 12px rgba(95, 85, 238, 0.35) !important;
+}
+
+.tool-active:active {
+  transform: translateY(1px);
+}
+
+/* Color Input - Excalidraw Style */
 input[type="color"] {
   width: 32px;
-  height: 24px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  height: 32px;
+  border: 2px solid var(--color-border-medium);
+  border-radius: 6px;
   cursor: pointer;
+  padding: 2px;
+  background: var(--color-surface-lowest);
+  transition: all 0.1s ease;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
   padding: 0;
 }
 
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+input[type="color"]:hover {
+  border-color: var(--color-border-dark);
+  box-shadow: 0 2px 4px var(--color-shadow-medium);
+}
+
+input[type="color"]:focus {
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 2px rgba(95, 85, 238, 0.2);
+  outline: none;
+}
+
+/* Range Slider - Excalidraw Style */
 input[type="range"] {
   width: 80px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-surface-medium);
+  outline: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }
 
-select {
-  padding: 4px 8px;
-  border: 1px solid #ddd;
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  border: 2px solid var(--color-surface-lowest);
+  box-shadow: 0 2px 4px var(--color-shadow-medium);
+  transition: all 0.1s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--color-primary-darker);
+  box-shadow: 0 3px 6px var(--color-shadow-strong);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  border: 2px solid var(--color-surface-lowest);
+  box-shadow: 0 2px 4px var(--color-shadow-medium);
+  transition: all 0.1s ease;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  background: var(--color-primary-darker);
+  box-shadow: 0 3px 6px var(--color-shadow-strong);
+}
+
+/* Checkbox - Excalidraw Style */
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border-medium);
   border-radius: 4px;
-  background: white;
-  font-size: 13px;
+  background: var(--color-surface-lowest);
+  cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  position: relative;
+  transition: all 0.1s ease;
 }
 
+input[type="checkbox"]:hover {
+  border-color: var(--color-border-dark);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: -1px;
+  left: 2px;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* Select Dropdown - Excalidraw Style */
+select {
+  padding: 8px 12px;
+  border: 1.5px solid var(--color-border-medium);
+  border-radius: 8px;
+  background: var(--color-surface-lowest);
+  font-size: 14px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.1s ease;
+  min-height: 36px;
+}
+
+select:hover {
+  border-color: var(--color-border-dark);
+  box-shadow: 0 2px 4px var(--color-shadow-medium);
+}
+
+select:focus {
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 2px rgba(95, 85, 238, 0.2);
+  outline: none;
+}
+
+/* Labels */
 label {
-  font-size: 13px;
-  color: #666;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
+/* Root Container */
 #root {
   height: 100vh;
   width: 100vw;
+  background-color: var(--color-canvas-background);
 }
 
-/* Help Modal Styles */
+/* Toolbar - Excalidraw Style */
+.toolbar {
+  background: var(--color-surface-lowest);
+  border-bottom: 1.5px solid var(--color-border-light);
+  box-shadow: 0 2px 8px var(--color-shadow-light);
+  backdrop-filter: blur(8px);
+}
+
+.toolbar-section {
+  border-right: 1px solid var(--color-border-light);
+  padding-right: 16px;
+  margin-right: 16px;
+}
+
+.toolbar-section:last-child {
+  border-right: none;
+  margin-right: 0;
+}
+
+/* Canvas */
+.canvas-container {
+  background: var(--color-canvas-background);
+}
+
+/* Modal - Excalidraw Style */
+.modal-overlay {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: var(--color-surface-lowest);
+  border: 1.5px solid var(--color-border-light);
+  box-shadow: 0 20px 40px var(--color-shadow-strongest);
+  border-radius: 12px;
+}
+
+/* Status Text */
+.status-text {
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+/* Keyboard Shortcuts */
 kbd {
-  background-color: #f1f3f4;
-  border: 1px solid #dadce0;
+  background-color: var(--color-surface-medium);
+  border: 1px solid var(--color-border-medium);
   border-radius: 4px;
-  color: #3c4043;
+  color: var(--color-text-primary);
   display: inline-block;
-  font-family: 'Roboto Mono', monospace;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 16px;
-  padding: 2px 4px;
-  margin: 0 1px;
+  padding: 3px 6px;
+  margin: 0 2px;
+  box-shadow: 0 1px 2px var(--color-shadow-light);
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+  background: var(--color-surface-low);
+  border: 1.5px solid var(--color-border-medium);
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.theme-toggle:hover {
+  background: var(--color-surface-medium);
+  border-color: var(--color-border-dark);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface-low);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-medium);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-dark);
+}
+
+/* Focus Styles */
+*:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+button:focus,
+input:focus,
+select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(95, 85, 238, 0.2);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-content {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .toolbar {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .toolbar-section {
+    padding-right: 12px;
+    margin-right: 12px;
+  }
+
+  button {
+    padding: 6px 10px;
+    font-size: 13px;
+    min-height: 32px;
+  }
 }

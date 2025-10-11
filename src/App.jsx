@@ -20,7 +20,7 @@ export default function App() {
   const lastPanRef = useRef({ x: 0, y: 0 });
 
   // UI state
-  const [color, setColor] = useState('#000000');
+  const [color, setColor] = useState('#1e1e1e'); // Official Excalidraw black
   const [fillColor, setFillColor] = useState('transparent');
   const [width, setWidth] = useState(3);
   const [tool, setTool] = useState('pen');
@@ -32,6 +32,7 @@ export default function App() {
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [theme, setTheme] = useState('light');
   const eraseSize = 15; // fixed eraser size
   const [version, setVersion] = useState(0);
   function bump() { setVersion(v => v + 1); }
@@ -134,7 +135,9 @@ export default function App() {
   function drawGrid(ctx, canvas) {
     if (!showGrid) return;
     const gridSize = 20;
-    ctx.strokeStyle = '#e0e0e0';
+    // Get grid color based on theme
+    const gridColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+    ctx.strokeStyle = gridColor;
     ctx.lineWidth = 0.5 / zoom;
     ctx.beginPath();
 
@@ -242,9 +245,9 @@ export default function App() {
     });
 
     const padding = 5;
-    ctx.strokeStyle = '#4285f4';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = '#5f55ee'; // Official Excalidraw primary color
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.setLineDash([4, 4]);
     ctx.strokeRect(minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2);
     ctx.setLineDash([]);
   }
@@ -267,7 +270,9 @@ export default function App() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#fff';
+    // Set canvas background based on theme
+    const canvasBackground = theme === 'dark' ? '#121212' : '#ffffff';
+    ctx.fillStyle = canvasBackground;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Save context and apply transformations
@@ -550,6 +555,37 @@ export default function App() {
     redraw();
   }, [showGrid, zoom, panX, panY]);
 
+  // Theme management
+  useEffect(() => {
+    // Load theme from localStorage or system preference
+    const savedTheme = localStorage.getItem('excalidraw-theme');
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    const initialTheme = savedTheme || systemTheme;
+
+    setTheme(initialTheme);
+    document.documentElement.setAttribute('data-theme', initialTheme);
+
+    // Listen for system theme changes
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleThemeChange = (e) => {
+      if (!localStorage.getItem('excalidraw-theme')) {
+        const newTheme = e.matches ? 'dark' : 'light';
+        setTheme(newTheme);
+        document.documentElement.setAttribute('data-theme', newTheme);
+      }
+    };
+
+    mediaQuery.addEventListener('change', handleThemeChange);
+    return () => mediaQuery.removeEventListener('change', handleThemeChange);
+  }, []);
+
+  // Update theme when state changes
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('excalidraw-theme', theme);
+    redraw(); // Redraw to update colors
+  }, [theme]);
+
   // Comprehensive Excalidraw-style keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e) {
@@ -742,6 +778,14 @@ export default function App() {
         case 'F1':
           e.preventDefault();
           setShowHelpModal(true);
+          break;
+
+        // Theme toggle
+        case 't':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            toggleTheme();
+          }
           break;
       }
     }
@@ -1031,23 +1075,27 @@ export default function App() {
     bump();
   }
 
+  function toggleTheme() {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+  }
+
   /* ---------- JSX UI ---------- */
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div
         ref={toolbarRef}
+        className="toolbar"
         style={{
           display: 'flex',
-          gap: 8,
-          padding: 8,
-          background: '#f3f3f3',
+          gap: 12,
+          padding: '12px 16px',
           alignItems: 'center',
-          flexWrap: 'wrap',
-          borderBottom: '1px solid #ddd'
+          flexWrap: 'wrap'
         }}
       >
         {/* File Operations */}
-        <div style={{ display: 'flex', gap: 4, marginRight: 12, borderRight: '1px solid #ccc', paddingRight: 12 }}>
+        <div className="toolbar-section" style={{ display: 'flex', gap: 6, paddingRight: 16 }}>
           <button onClick={saveAsJSON} title="Save as JSON">💾 Save</button>
           <button onClick={loadJSON} title="Load JSON">📁 Load</button>
           <button onClick={exportAsSVG} title="Export as SVG">🖼️ SVG</button>
@@ -1056,17 +1104,17 @@ export default function App() {
         </div>
 
         {/* Tools */}
-        <div style={{ display: 'flex', gap: 6, marginRight: 12, borderRight: '1px solid #ccc', paddingRight: 12 }}>
-          <button onClick={() => setTool('select')} style={{ fontWeight: tool === 'select' ? '700' : 400 }}>👆 Select</button>
-          <button onClick={() => setTool('pen')} style={{ fontWeight: tool === 'pen' ? '700' : 400 }}>✏️ Pen</button>
-          <button onClick={() => setTool('rect')} style={{ fontWeight: tool === 'rect' ? '700' : 400 }}>⬛ Rect</button>
-          <button onClick={() => setTool('circle')} style={{ fontWeight: tool === 'circle' ? '700' : 400 }}>⚪ Circle</button>
-          <button onClick={() => setTool('line')} style={{ fontWeight: tool === 'line' ? '700' : 400 }}>📏 Line</button>
-          <button onClick={() => setTool('eraser')} style={{ fontWeight: tool === 'eraser' ? '700' : 400 }}>🩹 Eraser</button>
+        <div className="toolbar-section" style={{ display: 'flex', gap: 6, paddingRight: 16 }}>
+          <button onClick={() => setTool('select')} className={tool === 'select' ? 'tool-active' : ''}>� Select</button>
+          <button onClick={() => setTool('pen')} className={tool === 'pen' ? 'tool-active' : ''}>✏️ Pen</button>
+          <button onClick={() => setTool('rect')} className={tool === 'rect' ? 'tool-active' : ''}>⬛ Rect</button>
+          <button onClick={() => setTool('circle')} className={tool === 'circle' ? 'tool-active' : ''}>⚪ Circle</button>
+          <button onClick={() => setTool('line')} className={tool === 'line' ? 'tool-active' : ''}>📏 Line</button>
+          <button onClick={() => setTool('eraser')} className={tool === 'eraser' ? 'tool-active' : ''}>🩹 Eraser</button>
         </div>
 
         {/* Colors and Properties */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginRight: 12, borderRight: '1px solid #ccc', paddingRight: 12 }}>
+        <div className="toolbar-section" style={{ display: 'flex', gap: 12, alignItems: 'center', paddingRight: 16 }}>
           <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             Stroke <input type="color" value={color} onChange={e => setColor(e.target.value)} />
           </label>
@@ -1076,14 +1124,20 @@ export default function App() {
               Fill
               <select value={fillColor} onChange={e => setFillColor(e.target.value)} style={{ marginLeft: 4 }}>
                 <option value="transparent">None</option>
-                <option value="#ff0000">Red</option>
-                <option value="#00ff00">Green</option>
-                <option value="#0000ff">Blue</option>
-                <option value="#ffff00">Yellow</option>
-                <option value="#ff00ff">Magenta</option>
-                <option value="#00ffff">Cyan</option>
-                <option value="#000000">Black</option>
-                <option value="#ffffff">White</option>
+                <option value="#1e1e1e">Black</option>
+                <option value="#6b7280">Gray</option>
+                <option value="#e03131">Red</option>
+                <option value="#e64980">Pink</option>
+                <option value="#be4bdb">Grape</option>
+                <option value="#7c3aed">Violet</option>
+                <option value="#4c63d2">Indigo</option>
+                <option value="#1971c2">Blue</option>
+                <option value="#0891b2">Cyan</option>
+                <option value="#0d9488">Teal</option>
+                <option value="#2f9e44">Green</option>
+                <option value="#66a80f">Lime</option>
+                <option value="#fab005">Yellow</option>
+                <option value="#fd7e14">Orange</option>
               </select>
               {fillColor !== 'transparent' && (
                 <input
@@ -1103,24 +1157,17 @@ export default function App() {
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: 6, marginRight: 12, borderRight: '1px solid #ccc', paddingRight: 12 }}>
+        <div className="toolbar-section" style={{ display: 'flex', gap: 6, paddingRight: 16 }}>
           <button onClick={undo}>↶ Undo</button>
           <button onClick={redo}>↷ Redo</button>
-          <button
-            onClick={deleteSelected}
-            disabled={selectedCount === 0}
-            style={{
-              opacity: selectedCount === 0 ? 0.5 : 1,
-              cursor: selectedCount === 0 ? 'not-allowed' : 'pointer'
-            }}
-          >
+          <button onClick={deleteSelected} disabled={selectedCount === 0}>
             🗑️ Delete
           </button>
           <button onClick={clear}>🧹 Clear All</button>
         </div>
 
         {/* Zoom Controls */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginRight: 12, borderRight: '1px solid #ccc', paddingRight: 12 }}>
+        <div className="toolbar-section" style={{ display: 'flex', gap: 6, alignItems: 'center', paddingRight: 16 }}>
           <button onClick={zoomOut} title="Zoom Out">🔍-</button>
           <span style={{ fontSize: '12px', minWidth: 45, textAlign: 'center' }}>
             {Math.round(zoom * 100)}%
@@ -1131,7 +1178,7 @@ export default function App() {
         </div>
 
         {/* View Options */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '14px' }}>
             <input
               type="checkbox"
@@ -1140,10 +1187,17 @@ export default function App() {
             />
             Grid
           </label>
+          <button
+            onClick={toggleTheme}
+            className="theme-toggle"
+            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+          >
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
         </div>
 
-        <div style={{ marginLeft: 'auto', opacity: 0.8, fontSize: '14px' }}>
-          <div>
+        <div className="status-text" style={{ marginLeft: 'auto' }}>
+          <div style={{ fontSize: '14px', fontWeight: '500' }}>
             Tool: <strong>{tool}</strong>
             {selectedCount > 0 && (
               <span style={{ marginLeft: 8 }}>
@@ -1151,7 +1205,7 @@ export default function App() {
               </span>
             )}
           </div>
-          <div style={{ fontSize: '11px', opacity: 0.7, marginTop: 2 }}>
+          <div style={{ fontSize: '12px', marginTop: 2 }}>
             {isSpacePressed ? 'Space: Pan mode active' :
               isShiftPressed ? 'Shift: Constrain aspect ratio' :
                 'V: Select • P: Pen • R: Rect • O: Circle • L: Line • E: Eraser • Esc: Select tool • Shift: Constrain • Space: Pan'}
@@ -1169,11 +1223,11 @@ export default function App() {
 
       <canvas
         ref={canvasRef}
+        className="canvas-container"
         style={{
           flex: 1,
           touchAction: 'none',
           display: 'block',
-          background: '#fff',
           cursor: isSpacePressed ? 'grab' : (tool === 'select' ? 'default' : 'crosshair')
         }}
       />
@@ -1181,13 +1235,13 @@ export default function App() {
       {/* Help Modal */}
       {showHelpModal && (
         <div
+          className="modal-overlay"
           style={{
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1196,14 +1250,13 @@ export default function App() {
           onClick={() => setShowHelpModal(false)}
         >
           <div
+            className="modal-content"
             style={{
-              backgroundColor: 'white',
               borderRadius: '12px',
-              padding: '24px',
-              maxWidth: '600px',
-              maxHeight: '80vh',
+              padding: '32px',
+              maxWidth: '700px',
+              maxHeight: '85vh',
               overflow: 'auto',
-              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
               margin: '20px'
             }}
             onClick={(e) => e.stopPropagation()}
@@ -1294,6 +1347,7 @@ export default function App() {
                 <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Help & Misc</h3>
                 <div style={{ lineHeight: '1.6' }}>
                   <div><kbd>?</kbd>, <kbd>F1</kbd>, or <kbd>Shift + P</kbd> → Show this help</div>
+                  <div><kbd>T</kbd> → Toggle light/dark theme</div>
                   <div><kbd>Ctrl/Cmd + S</kbd> → Save (future)</div>
                 </div>
               </div>
