@@ -73,3 +73,18 @@ label {
   height: 100vh;
   width: 100vw;
 }
+
+/* Help Modal Styles */
+kbd {
+  background-color: #f1f3f4;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  color: #3c4043;
+  display: inline-block;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  padding: 2px 4px;
+  margin: 0 1px;
+}

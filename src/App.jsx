@@ -30,6 +30,8 @@ export default function App() {
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const eraseSize = 15; // fixed eraser size
   const [version, setVersion] = useState(0);
   function bump() { setVersion(v => v + 1); }
@@ -93,6 +95,40 @@ export default function App() {
       x: worldPos.x * zoom + panX,
       y: worldPos.y * zoom + panY
     };
+  }
+
+  function constrainAspectRatio(start, end, shapeType) {
+    if (!isShiftPressed) return end;
+
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+
+    if (shapeType === 'rect') {
+      // For rectangles, make it a square
+      const size = Math.max(Math.abs(dx), Math.abs(dy));
+      return {
+        x: start.x + (dx >= 0 ? size : -size),
+        y: start.y + (dy >= 0 ? size : -size)
+      };
+    } else if (shapeType === 'circle') {
+      // For circles, already naturally constrained, but ensure perfect circle
+      const size = Math.max(Math.abs(dx), Math.abs(dy));
+      return {
+        x: start.x + (dx >= 0 ? size : -size),
+        y: start.y + (dy >= 0 ? size : -size)
+      };
+    } else if (shapeType === 'line') {
+      // For lines, constrain to 45-degree angles
+      const angle = Math.atan2(dy, dx);
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const constrainedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+      return {
+        x: start.x + Math.cos(constrainedAngle) * length,
+        y: start.y + Math.sin(constrainedAngle) * length
+      };
+    }
+
+    return end;
   }
 
   function drawGrid(ctx, canvas) {
@@ -322,20 +358,21 @@ export default function App() {
         const clickedElement = strokesRef.current.find(element => isPointInElement(p, element));
 
         if (clickedElement) {
-          // Multi-select with Ctrl/Cmd key
-          if (e.ctrlKey || e.metaKey) {
+          // Multi-select with Ctrl/Cmd or Shift key (Excalidraw behavior)
+          if (e.ctrlKey || e.metaKey || e.shiftKey) {
             if (selectedElementsRef.current.includes(clickedElement)) {
-              // Remove from selection
-              updateSelection(selectedElementsRef.current.filter(el => el !== clickedElement));
+              // Remove from selection (Ctrl/Cmd+click behavior)
+              if (e.ctrlKey || e.metaKey) {
+                updateSelection(selectedElementsRef.current.filter(el => el !== clickedElement));
+              }
+              // Shift+click on already selected item keeps it selected
             } else {
-              // Add to selection
+              // Add to selection (both Ctrl/Cmd+click and Shift+click)
               updateSelection([...selectedElementsRef.current, clickedElement]);
             }
           } else {
-            // Single select
-            if (!selectedElementsRef.current.includes(clickedElement)) {
-              updateSelection([clickedElement]);
-            }
+            // Single select (clear previous selection)
+            updateSelection([clickedElement]);
           }
 
           // Start dragging if we have selected elements
@@ -354,8 +391,8 @@ export default function App() {
             });
           }
         } else {
-          // Clear selection if not holding Ctrl/Cmd
-          if (!e.ctrlKey && !e.metaKey) {
+          // Clear selection if not holding Ctrl/Cmd/Shift (Excalidraw behavior)
+          if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
             updateSelection([]);
           }
         }
@@ -446,7 +483,8 @@ export default function App() {
         current.points.push(p);
         drawLastSegment(ctx, current);
       } else {
-        current.end = p;
+        // Apply aspect ratio constraint when Shift is held
+        current.end = constrainAspectRatio(current.start, p, current.type);
         if (!rafPendingRef.current) {
           rafPendingRef.current = true;
           requestAnimationFrame(() => {
@@ -512,56 +550,208 @@ export default function App() {
     redraw();
   }, [showGrid, zoom, panX, panY]);
 
-  // Keyboard shortcuts
+  // Comprehensive Excalidraw-style keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e) {
+      // Prevent shortcuts when typing in input fields
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Space key for pan mode
       if (e.key === ' ' && !isSpacePressed) {
         e.preventDefault();
         setIsSpacePressed(true);
         return;
       }
 
+      // Track Shift key for constraining aspect ratio
+      if (e.key === 'Shift' && !isShiftPressed) {
+        setIsShiftPressed(true);
+        return;
+      }
+
+      // Selection & Deletion shortcuts
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedElementsRef.current.length > 0) {
           e.preventDefault();
           deleteSelected();
         }
-      } else if (e.key === 'Escape') {
-        updateSelection([]);
-        redraw();
-        bump();
-      } else if (e.ctrlKey || e.metaKey) {
-        if (e.key === 'z' && !e.shiftKey) {
-          e.preventDefault();
-          undo();
-        } else if (e.key === 'z' && e.shiftKey || e.key === 'y') {
-          e.preventDefault();
-          redo();
-        } else if (e.key === 'a') {
-          e.preventDefault();
-          // Select all elements
-          updateSelection([...strokesRef.current]);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (showHelpModal) {
+          setShowHelpModal(false);
+        } else {
+          updateSelection([]);
+          setTool('select'); // Switch to selection tool like Excalidraw
           redraw();
           bump();
-        } else if (e.key === '=' || e.key === '+') {
-          e.preventDefault();
-          zoomIn();
-        } else if (e.key === '-') {
-          e.preventDefault();
-          zoomOut();
-        } else if (e.key === '0') {
-          e.preventDefault();
-          resetView();
-        } else if (e.key === '1') {
-          e.preventDefault();
-          zoomToFit();
         }
+        return;
+      }
+
+      // Modifier key combinations
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          // Undo/Redo
+          case 'z':
+            e.preventDefault();
+            if (e.shiftKey) {
+              redo(); // Ctrl+Shift+Z
+            } else {
+              undo(); // Ctrl+Z
+            }
+            break;
+
+          case 'y':
+            e.preventDefault();
+            redo(); // Ctrl+Y
+            break;
+
+          // Selection
+          case 'a':
+            e.preventDefault();
+            updateSelection([...strokesRef.current]);
+            setTool('select');
+            redraw();
+            bump();
+            break;
+
+          // Zoom controls
+          case '=':
+          case '+':
+            e.preventDefault();
+            zoomIn();
+            break;
+
+          case '-':
+            e.preventDefault();
+            zoomOut();
+            break;
+
+          case '0':
+            e.preventDefault();
+            resetView();
+            break;
+
+          case '1':
+            e.preventDefault();
+            zoomToFit();
+            break;
+
+          // File operations (optional - can be added later)
+          case 's':
+            e.preventDefault();
+            // Could trigger save functionality
+            break;
+        }
+        return;
+      }
+
+      // Tool switching shortcuts (without modifiers)
+      switch (e.key.toLowerCase()) {
+        case 'v':
+          e.preventDefault();
+          setTool('select');
+          break;
+
+        case 'p':
+          e.preventDefault();
+          if (e.shiftKey) {
+            // Shift+P opens help menu
+            setShowHelpModal(true);
+          } else {
+            // P sets pen tool
+            setTool('pen');
+          }
+          break;
+
+        case 'd':
+          e.preventDefault();
+          setTool('pen');
+          break;
+
+        case 'r':
+          e.preventDefault();
+          setTool('rect');
+          break;
+
+        case 'o':
+          e.preventDefault();
+          setTool('circle');
+          break;
+
+        case 'l':
+          e.preventDefault();
+          setTool('line');
+          break;
+
+        case 'e':
+          e.preventDefault();
+          setTool('eraser');
+          break;
+
+        // Number keys for quick tool access
+        case '1':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setTool('select');
+          }
+          break;
+
+        case '2':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setTool('pen');
+          }
+          break;
+
+        case '3':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setTool('rect');
+          }
+          break;
+
+        case '4':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setTool('circle');
+          }
+          break;
+
+        case '5':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setTool('line');
+          }
+          break;
+
+        // Help shortcuts
+        case '?':
+        case '/':
+          if (e.shiftKey) { // Shift+? or Shift+/
+            e.preventDefault();
+            setShowHelpModal(true);
+          }
+          break;
+
+        case 'F1':
+          e.preventDefault();
+          setShowHelpModal(true);
+          break;
       }
     }
 
     function handleKeyUp(e) {
       if (e.key === ' ') {
         setIsSpacePressed(false);
+      }
+      if (e.key === 'Shift') {
+        setIsShiftPressed(false);
       }
     }
 
@@ -862,6 +1052,7 @@ export default function App() {
           <button onClick={loadJSON} title="Load JSON">📁 Load</button>
           <button onClick={exportAsSVG} title="Export as SVG">🖼️ SVG</button>
           <button onClick={exportAsPNG} title="Export as PNG">📷 PNG</button>
+          <button onClick={() => setShowHelpModal(true)} title="Help & Shortcuts">❓ Help</button>
         </div>
 
         {/* Tools */}
@@ -961,7 +1152,9 @@ export default function App() {
             )}
           </div>
           <div style={{ fontSize: '11px', opacity: 0.7, marginTop: 2 }}>
-            {isSpacePressed ? 'Space: Pan mode active' : 'Two-finger scroll: Pan • Ctrl+wheel: Zoom • Space+drag: Pan • Middle click: Pan'}
+            {isSpacePressed ? 'Space: Pan mode active' :
+              isShiftPressed ? 'Shift: Constrain aspect ratio' :
+                'V: Select • P: Pen • R: Rect • O: Circle • L: Line • E: Eraser • Esc: Select tool • Shift: Constrain • Space: Pan'}
           </div>
         </div>
       </div>
@@ -984,6 +1177,141 @@ export default function App() {
           cursor: isSpacePressed ? 'grab' : (tool === 'select' ? 'default' : 'crosshair')
         }}
       />
+
+      {/* Help Modal */}
+      {showHelpModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => setShowHelpModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '600px',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
+              margin: '20px'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '600' }}>Keyboard Shortcuts & Help</h2>
+              <button
+                onClick={() => setShowHelpModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '4px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', fontSize: '14px' }}>
+              {/* Selection & Deletion */}
+              <div>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Selection & Deletion</h3>
+                <div style={{ lineHeight: '1.6' }}>
+                  <div><kbd>Delete</kbd> / <kbd>Backspace</kbd> → Delete selected</div>
+                  <div><kbd>Ctrl/Cmd + A</kbd> → Select all</div>
+                  <div><kbd>Escape</kbd> → Clear selection & select tool</div>
+                  <div><kbd>Shift + click</kbd> → Multi-select</div>
+                  <div><kbd>Ctrl/Cmd + click</kbd> → Add/remove from selection</div>
+                </div>
+              </div>
+
+              {/* Undo/Redo */}
+              <div>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Undo & Redo</h3>
+                <div style={{ lineHeight: '1.6' }}>
+                  <div><kbd>Ctrl/Cmd + Z</kbd> → Undo</div>
+                  <div><kbd>Ctrl/Cmd + Shift + Z</kbd> → Redo</div>
+                  <div><kbd>Ctrl/Cmd + Y</kbd> → Redo (alternative)</div>
+                </div>
+              </div>
+
+              {/* Tool Switching */}
+              <div>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Tool Switching</h3>
+                <div style={{ lineHeight: '1.6' }}>
+                  <div><kbd>V</kbd> or <kbd>1</kbd> → Selection tool</div>
+                  <div><kbd>P</kbd> / <kbd>D</kbd> or <kbd>2</kbd> → Pen tool</div>
+                  <div><kbd>R</kbd> or <kbd>3</kbd> → Rectangle tool</div>
+                  <div><kbd>O</kbd> or <kbd>4</kbd> → Circle tool</div>
+                  <div><kbd>L</kbd> or <kbd>5</kbd> → Line tool</div>
+                  <div><kbd>E</kbd> → Eraser tool</div>
+                </div>
+              </div>
+
+              {/* Zoom & Pan */}
+              <div>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Zoom & Pan</h3>
+                <div style={{ lineHeight: '1.6' }}>
+                  <div><kbd>Ctrl/Cmd + +</kbd> → Zoom in</div>
+                  <div><kbd>Ctrl/Cmd + -</kbd> → Zoom out</div>
+                  <div><kbd>Ctrl/Cmd + 0</kbd> → Reset view</div>
+                  <div><kbd>Ctrl/Cmd + 1</kbd> → Zoom to fit</div>
+                  <div><kbd>Space + drag</kbd> → Pan canvas</div>
+                  <div><kbd>Middle mouse drag</kbd> → Pan canvas</div>
+                  <div><kbd>Two-finger scroll</kbd> → Pan canvas</div>
+                  <div><kbd>Ctrl/Cmd + wheel</kbd> → Zoom at cursor</div>
+                </div>
+              </div>
+
+              {/* Shape Constraints */}
+              <div>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Shape Constraints</h3>
+                <div style={{ lineHeight: '1.6' }}>
+                  <div><kbd>Shift + drag</kbd> → Constrain aspect ratio</div>
+                  <div style={{ marginLeft: '16px', fontSize: '12px', color: '#666' }}>
+                    • Rectangles → Squares<br />
+                    • Circles → Perfect circles<br />
+                    • Lines → 45° angles
+                  </div>
+                </div>
+              </div>
+
+              {/* Help */}
+              <div>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Help & Misc</h3>
+                <div style={{ lineHeight: '1.6' }}>
+                  <div><kbd>?</kbd>, <kbd>F1</kbd>, or <kbd>Shift + P</kbd> → Show this help</div>
+                  <div><kbd>Ctrl/Cmd + S</kbd> → Save (future)</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>Tips:</h4>
+              <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '13px', lineHeight: '1.5' }}>
+                <li>Use the grid for precise alignment</li>
+                <li>Hold Shift while drawing shapes to maintain aspect ratio</li>
+                <li>Use Ctrl/Cmd+A to select all, then move everything at once</li>
+                <li>Two-finger scroll on trackpads provides smooth panning</li>
+                <li>Press Escape to quickly switch back to selection tool</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
