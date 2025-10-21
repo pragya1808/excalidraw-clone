@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import './App.css';
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -35,14 +36,6 @@ export default function App() {
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
-  // Initialize theme from localStorage or system preference
-  const getInitialTheme = () => {
-    const savedTheme = localStorage.getItem('excalidraw-theme');
-    if (savedTheme) return savedTheme;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  };
-
-  const [theme, setTheme] = useState(getInitialTheme);
   const eraseSize = 15; // fixed eraser size
   const [version, setVersion] = useState(0);
   function bump() { setVersion(v => v + 1); }
@@ -54,7 +47,7 @@ export default function App() {
 
     // Get context with performance optimizations
     const ctx = canvas.getContext('2d', {
-      alpha: false, // No transparency needed
+      alpha: true, // Enable transparency for gradient background
       desynchronized: true, // Better performance
       willReadFrequently: false // We don't read pixels frequently
     });
@@ -155,11 +148,9 @@ export default function App() {
   function drawGrid(ctx, canvas) {
     if (!showGrid) return;
     const gridSize = 20;
-    // Get grid color based on theme
-    const gridColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-    ctx.strokeStyle = gridColor;
-    ctx.lineWidth = 0.5 / zoom;
-    ctx.beginPath();
+
+    // Excalidraw-style dotted grid - light theme only
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
 
     // Calculate visible area in world coordinates
     const startX = Math.floor(-panX / zoom / gridSize) * gridSize;
@@ -167,15 +158,15 @@ export default function App() {
     const startY = Math.floor(-panY / zoom / gridSize) * gridSize;
     const endY = Math.ceil((canvas.height - panY) / zoom / gridSize) * gridSize;
 
+    // Draw dots at grid intersections (Excalidraw style)
+    const dotSize = 1 / zoom;
     for (let x = startX; x <= endX; x += gridSize) {
-      ctx.moveTo(x, startY);
-      ctx.lineTo(x, endY);
+      for (let y = startY; y <= endY; y += gridSize) {
+        ctx.beginPath();
+        ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
-    for (let y = startY; y <= endY; y += gridSize) {
-      ctx.moveTo(startX, y);
-      ctx.lineTo(endX, y);
-    }
-    ctx.stroke();
   }
 
   function drawPenStroke(ctx, stroke) {
@@ -296,7 +287,7 @@ export default function App() {
     });
 
     const padding = 5;
-    ctx.strokeStyle = '#5f55ee'; // Official Excalidraw primary color
+    ctx.strokeStyle = '#6965db'; // Official Excalidraw primary color
     ctx.lineWidth = 1.5 / zoom;
     ctx.setLineDash([4, 4]);
     ctx.strokeRect(minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2);
@@ -364,10 +355,7 @@ export default function App() {
     const ctx = drawingContextRef.current || canvas.getContext('2d');
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Set canvas background based on current theme
-    const canvasBackground = theme === 'dark' ? '#121212' : '#ffffff';
-    ctx.fillStyle = canvasBackground;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Canvas is transparent to show the gradient background
 
     // Save context and apply transformations
     ctx.save();
@@ -689,40 +677,7 @@ export default function App() {
   // Redraw when grid setting changes or zoom/pan changes
   useEffect(() => {
     redraw();
-  }, [showGrid, zoom, panX, panY, theme]);
-
-  // Theme management
-  useEffect(() => {
-    // Set initial theme attribute
-    document.documentElement.setAttribute('data-theme', theme);
-
-    // Listen for system theme changes
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleThemeChange = (e) => {
-      // Only follow system theme if user hasn't manually set a theme
-      if (!localStorage.getItem('excalidraw-theme')) {
-        const newTheme = e.matches ? 'dark' : 'light';
-        setTheme(newTheme);
-      }
-    };
-
-    mediaQuery.addEventListener('change', handleThemeChange);
-    return () => mediaQuery.removeEventListener('change', handleThemeChange);
-  }, []);
-
-  // Update theme when state changes
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('excalidraw-theme', theme);
-
-    // Force canvas redraw with new theme colors
-    const canvas = canvasRef.current;
-    if (canvas) {
-      requestAnimationFrame(() => {
-        redraw();
-      });
-    }
-  }, [theme]);
+  }, [showGrid, zoom, panX, panY]);
 
   // Comprehensive Excalidraw-style keyboard shortcuts
   useEffect(() => {
@@ -918,13 +873,7 @@ export default function App() {
           setShowHelpModal(true);
           break;
 
-        // Theme toggle
-        case 't':
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            toggleTheme();
-          }
-          break;
+
       }
     }
 
@@ -1213,144 +1162,15 @@ export default function App() {
     bump();
   }
 
-  function toggleTheme() {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-  }
+
+
+  // Add state for settings panel
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   /* ---------- JSX UI ---------- */
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <div
-        ref={toolbarRef}
-        className="toolbar"
-        style={{
-          display: 'flex',
-          gap: 12,
-          padding: '12px 16px',
-          alignItems: 'center',
-          flexWrap: 'wrap'
-        }}
-      >
-        {/* File Operations */}
-        <div className="toolbar-section" style={{ display: 'flex', gap: 6, paddingRight: 16 }}>
-          <button onClick={saveAsJSON} title="Save as JSON">💾 Save</button>
-          <button onClick={loadJSON} title="Load JSON">📁 Load</button>
-          <button onClick={exportAsSVG} title="Export as SVG">🖼️ SVG</button>
-          <button onClick={exportAsPNG} title="Export as PNG">📷 PNG</button>
-          <button onClick={() => setShowHelpModal(true)} title="Help & Shortcuts">❓ Help</button>
-        </div>
-
-        {/* Tools */}
-        <div className="toolbar-section" style={{ display: 'flex', gap: 6, paddingRight: 16 }}>
-          <button onClick={() => setTool('select')} className={tool === 'select' ? 'tool-active' : ''}>� Select</button>
-          <button onClick={() => setTool('pen')} className={tool === 'pen' ? 'tool-active' : ''}>✏️ Pen</button>
-          <button onClick={() => setTool('rect')} className={tool === 'rect' ? 'tool-active' : ''}>⬛ Rect</button>
-          <button onClick={() => setTool('circle')} className={tool === 'circle' ? 'tool-active' : ''}>⚪ Circle</button>
-          <button onClick={() => setTool('line')} className={tool === 'line' ? 'tool-active' : ''}>📏 Line</button>
-          <button onClick={() => setTool('eraser')} className={tool === 'eraser' ? 'tool-active' : ''}>🩹 Eraser</button>
-        </div>
-
-        {/* Colors and Properties */}
-        <div className="toolbar-section" style={{ display: 'flex', gap: 12, alignItems: 'center', paddingRight: 16 }}>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            Stroke <input type="color" value={color} onChange={e => setColor(e.target.value)} />
-          </label>
-
-          {(tool === 'rect' || tool === 'circle') && (
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              Fill
-              <select value={fillColor} onChange={e => setFillColor(e.target.value)} style={{ marginLeft: 4 }}>
-                <option value="transparent">None</option>
-                <option value="#1e1e1e">Black</option>
-                <option value="#6b7280">Gray</option>
-                <option value="#e03131">Red</option>
-                <option value="#e64980">Pink</option>
-                <option value="#be4bdb">Grape</option>
-                <option value="#7c3aed">Violet</option>
-                <option value="#4c63d2">Indigo</option>
-                <option value="#1971c2">Blue</option>
-                <option value="#0891b2">Cyan</option>
-                <option value="#0d9488">Teal</option>
-                <option value="#2f9e44">Green</option>
-                <option value="#66a80f">Lime</option>
-                <option value="#fab005">Yellow</option>
-                <option value="#fd7e14">Orange</option>
-              </select>
-              {fillColor !== 'transparent' && (
-                <input
-                  type="color"
-                  value={fillColor === 'transparent' ? '#ffffff' : fillColor}
-                  onChange={e => setFillColor(e.target.value)}
-                  style={{ width: 30, height: 25, marginLeft: 4 }}
-                />
-              )}
-            </label>
-          )}
-
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            Width <input type="range" min={1} max={50} value={width} onChange={e => setWidth(+e.target.value)} />
-            <span style={{ minWidth: 20, fontSize: '12px' }}>{width}</span>
-          </label>
-        </div>
-
-        {/* Actions */}
-        <div className="toolbar-section" style={{ display: 'flex', gap: 6, paddingRight: 16 }}>
-          <button onClick={undo}>↶ Undo</button>
-          <button onClick={redo}>↷ Redo</button>
-          <button onClick={deleteSelected} disabled={selectedCount === 0}>
-            🗑️ Delete
-          </button>
-          <button onClick={clear}>🧹 Clear All</button>
-        </div>
-
-        {/* Zoom Controls */}
-        <div className="toolbar-section" style={{ display: 'flex', gap: 6, alignItems: 'center', paddingRight: 16 }}>
-          <button onClick={zoomOut} title="Zoom Out">🔍-</button>
-          <span style={{ fontSize: '12px', minWidth: 45, textAlign: 'center' }}>
-            {Math.round(zoom * 100)}%
-          </span>
-          <button onClick={zoomIn} title="Zoom In">🔍+</button>
-          <button onClick={resetView} title="Reset View">🎯</button>
-          <button onClick={zoomToFit} title="Zoom to Fit">📐</button>
-        </div>
-
-        {/* View Options */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '14px' }}>
-            <input
-              type="checkbox"
-              checked={showGrid}
-              onChange={e => setShowGrid(e.target.checked)}
-            />
-            Grid
-          </label>
-          <button
-            onClick={toggleTheme}
-            className="theme-toggle"
-            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
-          >
-            {theme === 'light' ? '🌙' : '☀️'}
-          </button>
-        </div>
-
-        <div className="status-text" style={{ marginLeft: 'auto' }}>
-          <div style={{ fontSize: '14px', fontWeight: '500' }}>
-            Tool: <strong>{tool}</strong>
-            {selectedCount > 0 && (
-              <span style={{ marginLeft: 8 }}>
-                Selected: {selectedCount}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: '12px', marginTop: 2 }}>
-            {isSpacePressed ? 'Space: Pan mode active' :
-              isShiftPressed ? 'Shift: Constrain aspect ratio' :
-                'V: Select • P: Pen • R: Rect • O: Circle • L: Line • E: Eraser • Esc: Select tool • Shift: Constrain • Space: Pan'}
-          </div>
-        </div>
-      </div>
-
+    <div className="app-container">
+      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -1359,147 +1179,404 @@ export default function App() {
         style={{ display: 'none' }}
       />
 
+      {/* Canvas */}
       <canvas
         ref={canvasRef}
-        className="canvas-container"
-        style={{
-          flex: 1,
-          touchAction: 'none',
-          display: 'block',
-          cursor: isSpacePressed ? 'grab' : (tool === 'select' ? 'default' : 'crosshair')
-        }}
+        className={`canvas-container ${isSpacePressed || isPanningRef.current ? 'panning' :
+          tool === 'select' ? 'tool-select' :
+            tool === 'eraser' ? 'tool-eraser' : ''
+          }`}
+        style={{ touchAction: 'none' }}
       />
+
+      {/* Floating Toolbar - Center Top */}
+      <div className="floating-toolbar">
+        {/* Selection Tool */}
+        <button
+          className={`tool-button ${tool === 'select' ? 'active' : ''}`}
+          onClick={() => setTool('select')}
+          title="Selection tool (V)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2 2l7 20l2.9-7.1L19 17L2 2z" />
+          </svg>
+        </button>
+
+        {/* Pen Tool */}
+        <button
+          className={`tool-button ${tool === 'pen' ? 'active' : ''}`}
+          onClick={() => setTool('pen')}
+          title="Pen tool (P)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+          </svg>
+        </button>
+
+        {/* Rectangle Tool */}
+        <button
+          className={`tool-button ${tool === 'rect' ? 'active' : ''}`}
+          onClick={() => setTool('rect')}
+          title="Rectangle tool (R)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          </svg>
+        </button>
+
+        {/* Circle Tool */}
+        <button
+          className={`tool-button ${tool === 'circle' ? 'active' : ''}`}
+          onClick={() => setTool('circle')}
+          title="Circle tool (O)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+          </svg>
+        </button>
+
+        {/* Line Tool */}
+        <button
+          className={`tool-button ${tool === 'line' ? 'active' : ''}`}
+          onClick={() => setTool('line')}
+          title="Line tool (L)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="7" y1="17" x2="17" y2="7" />
+          </svg>
+        </button>
+
+        {/* Eraser Tool */}
+        <button
+          className={`tool-button ${tool === 'eraser' ? 'active' : ''}`}
+          onClick={() => setTool('eraser')}
+          title="Eraser tool (E)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M16.24 3.56l4.95 4.94c.78.79.78 2.05 0 2.84L12 20.53a4.008 4.008 0 0 1-5.66 0L2.81 17c-.78-.79-.78-2.05 0-2.84l10.6-10.6c.79-.78 2.05-.78 2.83 0M4.22 15.58l3.54 3.53c.78.79 2.04.79 2.83 0l3.53-3.53-6.36-6.36-3.54 3.36z" />
+          </svg>
+        </button>
+
+        <div className="tool-separator" />
+
+        {/* Color Picker */}
+        <div className="color-picker-wrapper" title="Stroke color">
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            className="color-picker"
+          />
+        </div>
+
+        {/* Stroke Width */}
+        <div className="stroke-width-wrapper">
+          <input
+            type="range"
+            min="1"
+            max="50"
+            value={width}
+            onChange={(e) => setWidth(+e.target.value)}
+            className="stroke-width-slider"
+            title={`Stroke width: ${width}px`}
+          />
+        </div>
+
+        <div className="tool-separator" />
+
+        {/* Undo */}
+        <button
+          className="tool-button"
+          onClick={undo}
+          title="Undo (Ctrl+Z)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 7v6h6" />
+            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
+          </svg>
+        </button>
+
+        {/* Redo */}
+        <button
+          className="tool-button"
+          onClick={redo}
+          title="Redo (Ctrl+Shift+Z)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 7v6h-6" />
+            <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Hamburger Menu - Top Left */}
+      <button
+        className="hamburger-menu"
+        onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+        title="Settings"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      {/* Settings Panel */}
+      {showSettingsPanel && (
+        <div className="settings-panel">
+          <div className="settings-section">
+            <h3>File</h3>
+            <div className="settings-row">
+              <button onClick={saveAsJSON} style={{ width: '100%', marginBottom: '8px' }}>
+                💾 Save as JSON
+              </button>
+            </div>
+            <div className="settings-row">
+              <button onClick={loadJSON} style={{ width: '100%', marginBottom: '8px' }}>
+                📁 Load JSON
+              </button>
+            </div>
+            <div className="settings-row">
+              <button onClick={exportAsSVG} style={{ width: '100%', marginBottom: '8px' }}>
+                🖼️ Export as SVG
+              </button>
+            </div>
+            <div className="settings-row">
+              <button onClick={exportAsPNG} style={{ width: '100%' }}>
+                📷 Export as PNG
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>Drawing</h3>
+            {(tool === 'rect' || tool === 'circle') && (
+              <div className="settings-row">
+                <span className="settings-label">Fill</span>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <select
+                    value={fillColor}
+                    onChange={(e) => setFillColor(e.target.value)}
+                    style={{ fontSize: '12px', padding: '4px' }}
+                  >
+                    <option value="transparent">None</option>
+                    <option value="#1e1e1e">Black</option>
+                    <option value="#6b7280">Gray</option>
+                    <option value="#e03131">Red</option>
+                    <option value="#e64980">Pink</option>
+                    <option value="#be4bdb">Grape</option>
+                    <option value="#7c3aed">Violet</option>
+                    <option value="#4c63d2">Indigo</option>
+                    <option value="#1971c2">Blue</option>
+                    <option value="#0891b2">Cyan</option>
+                    <option value="#0d9488">Teal</option>
+                    <option value="#2f9e44">Green</option>
+                    <option value="#66a80f">Lime</option>
+                    <option value="#fab005">Yellow</option>
+                    <option value="#fd7e14">Orange</option>
+                  </select>
+                  {fillColor !== 'transparent' && (
+                    <input
+                      type="color"
+                      value={fillColor}
+                      onChange={(e) => setFillColor(e.target.value)}
+                      style={{ width: '24px', height: '24px', border: 'none', borderRadius: '4px' }}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="settings-section">
+            <h3>View</h3>
+            <div className="settings-row">
+              <span className="settings-label">Grid</span>
+              <input
+                type="checkbox"
+                checked={showGrid}
+                onChange={(e) => setShowGrid(e.target.checked)}
+              />
+            </div>
+
+          </div>
+
+          <div className="settings-section">
+            <h3>Actions</h3>
+            <div className="settings-row">
+              <button
+                onClick={deleteSelected}
+                disabled={selectedCount === 0}
+                style={{ width: '100%', marginBottom: '8px' }}
+              >
+                🗑️ Delete Selected ({selectedCount})
+              </button>
+            </div>
+            <div className="settings-row">
+              <button onClick={clear} style={{ width: '100%' }}>
+                🧹 Clear All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Zoom Controls - Bottom Left */}
+      <div className="zoom-controls">
+        <button className="zoom-button" onClick={zoomOut} title="Zoom out">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+            <line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
+        </button>
+
+        <div className="zoom-display">{Math.round(zoom * 100)}%</div>
+
+        <button className="zoom-button" onClick={zoomIn} title="Zoom in">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+            <line x1="11" y1="8" x2="11" y2="14" />
+            <line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
+        </button>
+
+        <button className="zoom-button" onClick={resetView} title="Reset view">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M1 4v6h6" />
+            <path d="M23 20v-6h-6" />
+            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
+          </svg>
+        </button>
+
+        <button className="zoom-button" onClick={zoomToFit} title="Zoom to fit">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Help Label - Bottom Right */}
+      <div className="help-label" onClick={() => setShowHelpModal(true)}>
+        Shortcuts & help
+      </div>
+
+      {/* Selection Indicator */}
+      {selectedCount > 0 && (
+        <div className="selection-indicator">
+          {selectedCount} selected
+        </div>
+      )}
 
       {/* Help Modal */}
       {showHelpModal && (
-        <div
-          className="modal-overlay"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}
-          onClick={() => setShowHelpModal(false)}
-        >
-          <div
-            className="modal-content"
-            style={{
-              borderRadius: '12px',
-              padding: '32px',
-              maxWidth: '700px',
-              maxHeight: '85vh',
-              overflow: 'auto',
-              margin: '20px'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Keyboard Shortcuts & Help</h2>
-              <button
-                onClick={() => setShowHelpModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  padding: '4px',
-                  borderRadius: '4px'
-                }}
-              >
+        <div className="modal-overlay" onClick={() => setShowHelpModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Keyboard Shortcuts & Help</h2>
+              <button className="modal-close" onClick={() => setShowHelpModal(false)}>
                 ×
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', fontSize: '14px' }}>
-              {/* Selection & Deletion */}
-              <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Selection & Deletion</h3>
-                <div style={{ lineHeight: '1.6' }}>
-                  <div><kbd>Delete</kbd> / <kbd>Backspace</kbd> → Delete selected</div>
-                  <div><kbd>Ctrl/Cmd + A</kbd> → Select all</div>
-                  <div><kbd>Escape</kbd> → Clear selection & select tool</div>
-                  <div><kbd>Shift + click</kbd> → Multi-select</div>
-                  <div><kbd>Ctrl/Cmd + click</kbd> → Add/remove from selection</div>
-                </div>
+            <div className="shortcuts-grid">
+              <div className="shortcut-action">Selection tool</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">V</span>
+                <span className="shortcut-key">1</span>
               </div>
 
-              {/* Undo/Redo */}
-              <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Undo & Redo</h3>
-                <div style={{ lineHeight: '1.6' }}>
-                  <div><kbd>Ctrl/Cmd + Z</kbd> → Undo</div>
-                  <div><kbd>Ctrl/Cmd + Shift + Z</kbd> → Redo</div>
-                  <div><kbd>Ctrl/Cmd + Y</kbd> → Redo (alternative)</div>
-                </div>
+              <div className="shortcut-action">Pen tool</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">P</span>
+                <span className="shortcut-key">2</span>
               </div>
 
-              {/* Tool Switching */}
-              <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Tool Switching</h3>
-                <div style={{ lineHeight: '1.6' }}>
-                  <div><kbd>V</kbd> or <kbd>1</kbd> → Selection tool</div>
-                  <div><kbd>P</kbd> / <kbd>D</kbd> or <kbd>2</kbd> → Pen tool</div>
-                  <div><kbd>R</kbd> or <kbd>3</kbd> → Rectangle tool</div>
-                  <div><kbd>O</kbd> or <kbd>4</kbd> → Circle tool</div>
-                  <div><kbd>L</kbd> or <kbd>5</kbd> → Line tool</div>
-                  <div><kbd>E</kbd> → Eraser tool</div>
-                </div>
+              <div className="shortcut-action">Rectangle tool</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">R</span>
+                <span className="shortcut-key">3</span>
               </div>
 
-              {/* Zoom & Pan */}
-              <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Zoom & Pan</h3>
-                <div style={{ lineHeight: '1.6' }}>
-                  <div><kbd>Ctrl/Cmd + +</kbd> → Zoom in</div>
-                  <div><kbd>Ctrl/Cmd + -</kbd> → Zoom out</div>
-                  <div><kbd>Ctrl/Cmd + 0</kbd> → Reset view</div>
-                  <div><kbd>Ctrl/Cmd + 1</kbd> → Zoom to fit</div>
-                  <div><kbd>Space + drag</kbd> → Pan canvas</div>
-                  <div><kbd>Middle mouse drag</kbd> → Pan canvas</div>
-                  <div><kbd>Two-finger scroll</kbd> → Pan canvas</div>
-                  <div><kbd>Ctrl/Cmd + wheel</kbd> → Zoom at cursor</div>
-                </div>
+              <div className="shortcut-action">Circle tool</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">O</span>
+                <span className="shortcut-key">4</span>
               </div>
 
-              {/* Shape Constraints */}
-              <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Shape Constraints</h3>
-                <div style={{ lineHeight: '1.6' }}>
-                  <div><kbd>Shift + drag</kbd> → Constrain aspect ratio</div>
-                  <div style={{ marginLeft: '16px', fontSize: '12px', color: '#666' }}>
-                    • Rectangles → Squares<br />
-                    • Circles → Perfect circles<br />
-                    • Lines → 45° angles
-                  </div>
-                </div>
+              <div className="shortcut-action">Line tool</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">L</span>
+                <span className="shortcut-key">5</span>
               </div>
 
-              {/* Help */}
-              <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Help & Misc</h3>
-                <div style={{ lineHeight: '1.6' }}>
-                  <div><kbd>?</kbd>, <kbd>F1</kbd>, or <kbd>Shift + P</kbd> → Show this help</div>
-                  <div><kbd>T</kbd> → Toggle light/dark theme</div>
-                  <div><kbd>Ctrl/Cmd + S</kbd> → Save (future)</div>
-                </div>
+              <div className="shortcut-action">Eraser tool</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">E</span>
               </div>
-            </div>
 
-            <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-              <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>Tips:</h4>
-              <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '13px', lineHeight: '1.5' }}>
-                <li>Use the grid for precise alignment</li>
-                <li>Hold Shift while drawing shapes to maintain aspect ratio</li>
-                <li>Use Ctrl/Cmd+A to select all, then move everything at once</li>
-                <li>Two-finger scroll on trackpads provides smooth panning</li>
-                <li>Press Escape to quickly switch back to selection tool</li>
-              </ul>
+              <div className="shortcut-action">Undo</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">Ctrl</span>
+                <span className="shortcut-key">Z</span>
+              </div>
+
+              <div className="shortcut-action">Redo</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">Ctrl</span>
+                <span className="shortcut-key">Shift</span>
+                <span className="shortcut-key">Z</span>
+              </div>
+
+              <div className="shortcut-action">Select all</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">Ctrl</span>
+                <span className="shortcut-key">A</span>
+              </div>
+
+              <div className="shortcut-action">Delete selected</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">Del</span>
+              </div>
+
+              <div className="shortcut-action">Pan canvas</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">Space</span>
+                <span>+ drag</span>
+              </div>
+
+              <div className="shortcut-action">Constrain shapes</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">Shift</span>
+                <span>+ drag</span>
+              </div>
+
+              <div className="shortcut-action">Zoom in</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">Ctrl</span>
+                <span className="shortcut-key">+</span>
+              </div>
+
+              <div className="shortcut-action">Zoom out</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">Ctrl</span>
+                <span className="shortcut-key">-</span>
+              </div>
+
+              <div className="shortcut-action">Reset view</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">Ctrl</span>
+                <span className="shortcut-key">0</span>
+              </div>
+
+
+
+              <div className="shortcut-action">Show help</div>
+              <div className="shortcut-keys">
+                <span className="shortcut-key">?</span>
+              </div>
             </div>
           </div>
         </div>

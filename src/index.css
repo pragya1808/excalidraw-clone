@@ -1,11 +1,11 @@
 :root {
-  /* Official Excalidraw Light Theme Colors */
-  --color-primary: #5f55ee;
-  --color-primary-darker: #4c63d2;
+  /* Official Excalidraw Colors - Exact Match */
+  --color-primary: #6965db;
+  --color-primary-darker: #5f55ee;
   --color-primary-light: #7c3aed;
   --color-primary-contrast: #ffffff;
 
-  /* Canvas & Background */
+  /* Canvas & Background - Excalidraw White */
   --color-canvas-background: #ffffff;
   --color-canvas-background-secondary: #f8f9fa;
 
@@ -20,13 +20,13 @@
   --color-text-primary: #1f2937;
   --color-text-secondary: #6b7280;
   --color-text-tertiary: #9ca3af;
-  --color-text-accent: #5f55ee;
+  --color-text-accent: #6965db;
 
   /* Border Colors */
   --color-border-light: #e5e7eb;
   --color-border-medium: #d1d5db;
   --color-border-dark: #9ca3af;
-  --color-border-focus: #5f55ee;
+  --color-border-focus: #6965db;
 
   /* Drawing Colors - Official Excalidraw Palette */
   --color-palette-black: #1e1e1e;
@@ -50,15 +50,15 @@
   --color-shadow-strong: rgba(0, 0, 0, 0.12);
   --color-shadow-strongest: rgba(0, 0, 0, 0.16);
 
-  /* Grid */
-  --color-grid: rgba(0, 0, 0, 0.1);
+  /* Grid - Light dotted pattern like Excalidraw */
+  --color-grid: rgba(0, 0, 0, 0.08);
 
   /* Selection */
-  --color-selection-element: #5f55ee;
-  --color-selection-element-secondary: rgba(95, 85, 238, 0.1);
+  --color-selection-element: #6965db;
+  --color-selection-element-secondary: rgba(105, 101, 219, 0.1);
 
-  /* Typography */
-  font-family: "Virgil", "Segoe UI Emoji", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  /* Typography - Virgil font for hand-drawn feel */
+  font-family: "Virgil", "Cascadia Code", "Segoe UI Emoji", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: var(--color-text-primary);
@@ -69,32 +69,7 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Dark Theme */
-[data-theme="dark"] {
-  --color-canvas-background: #121212;
-  --color-canvas-background-secondary: #1e1e1e;
 
-  --color-surface-lowest: #1e1e1e;
-  --color-surface-low: #2d2d2d;
-  --color-surface-medium: #3a3a3a;
-  --color-surface-high: #4a4a4a;
-  --color-surface-higher: #5a5a5a;
-
-  --color-text-primary: #f3f4f6;
-  --color-text-secondary: #d1d5db;
-  --color-text-tertiary: #9ca3af;
-
-  --color-border-light: #374151;
-  --color-border-medium: #4b5563;
-  --color-border-dark: #6b7280;
-
-  --color-shadow-light: rgba(0, 0, 0, 0.2);
-  --color-shadow-medium: rgba(0, 0, 0, 0.3);
-  --color-shadow-strong: rgba(0, 0, 0, 0.4);
-  --color-shadow-strongest: rgba(0, 0, 0, 0.5);
-
-  --color-grid: rgba(255, 255, 255, 0.1);
-}
 
 * {
   box-sizing: border-box;
@@ -105,7 +80,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow: hidden;
-  background-color: var(--color-canvas-background);
+  /* Excalidraw's exact light background - clean white */
+  background: #ffffff;
 }
 
 /* Excalidraw-style Buttons */
