@@ -249,6 +249,106 @@ export default function App() {
     ctx.stroke();
   }
 
+  function drawArrow(ctx, s) {
+    const dx = s.end.x - s.start.x;
+    const dy = s.end.y - s.start.y;
+    const angle = Math.atan2(dy, dx);
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    // Draw the main line
+    ctx.beginPath();
+    ctx.moveTo(s.start.x, s.start.y);
+    ctx.lineTo(s.end.x, s.end.y);
+    ctx.stroke();
+
+    // Draw arrowhead
+    const headLength = Math.min(20, length * 0.3);
+    const headAngle = Math.PI / 6; // 30 degrees
+
+    ctx.beginPath();
+    ctx.moveTo(s.end.x, s.end.y);
+    ctx.lineTo(
+      s.end.x - headLength * Math.cos(angle - headAngle),
+      s.end.y - headLength * Math.sin(angle - headAngle)
+    );
+    ctx.moveTo(s.end.x, s.end.y);
+    ctx.lineTo(
+      s.end.x - headLength * Math.cos(angle + headAngle),
+      s.end.y - headLength * Math.sin(angle + headAngle)
+    );
+    ctx.stroke();
+  }
+
+  function drawDiamond(ctx, s) {
+    const cx = (s.start.x + s.end.x) / 2;
+    const cy = (s.start.y + s.end.y) / 2;
+    const w = Math.abs(s.end.x - s.start.x) / 2;
+    const h = Math.abs(s.end.y - s.start.y) / 2;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h); // top
+    ctx.lineTo(cx + w, cy); // right
+    ctx.lineTo(cx, cy + h); // bottom
+    ctx.lineTo(cx - w, cy); // left
+    ctx.closePath();
+
+    if (s.fillColor && s.fillColor !== 'transparent') {
+      ctx.fillStyle = s.fillColor;
+      ctx.fill();
+    }
+    ctx.stroke();
+  }
+
+  function drawText(ctx, s) {
+    if (!s.text) return;
+
+    ctx.font = `${s.fontSize || 16}px Arial`;
+    ctx.fillStyle = s.color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    // Split text into lines and draw each line
+    const lines = s.text.split('\n');
+    const lineHeight = (s.fontSize || 16) * 1.2;
+
+    lines.forEach((line, index) => {
+      ctx.fillText(line, s.start.x, s.start.y + (index * lineHeight));
+    });
+  }
+
+  function drawStickyNote(ctx, s) {
+    const x = Math.min(s.start.x, s.end.x);
+    const y = Math.min(s.start.y, s.end.y);
+    const w = Math.abs(s.end.x - s.start.x);
+    const h = Math.abs(s.end.y - s.start.y);
+
+    // Draw sticky note background
+    ctx.fillStyle = s.fillColor || '#fef3c7'; // Default yellow
+    ctx.fillRect(x, y, w, h);
+
+    // Draw border
+    ctx.strokeStyle = s.color;
+    ctx.strokeRect(x, y, w, h);
+
+    // Draw text if present
+    if (s.text) {
+      ctx.fillStyle = '#374151'; // Dark gray text
+      ctx.font = `${s.fontSize || 14}px Arial`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+
+      const lines = s.text.split('\n');
+      const lineHeight = (s.fontSize || 14) * 1.2;
+      const padding = 8;
+
+      lines.forEach((line, index) => {
+        if (y + padding + (index * lineHeight) < y + h - padding) {
+          ctx.fillText(line, x + padding, y + padding + (index * lineHeight));
+        }
+      });
+    }
+  }
+
   function isPointInElement(point, element) {
     if (element.type === 'pen') {
       return element.points.some(pt => {
@@ -293,6 +393,69 @@ export default function App() {
     ctx.setLineDash([4, 4]);
     ctx.strokeRect(minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2);
     ctx.setLineDash([]);
+  }
+
+  function drawLassoPath(ctx, path) {
+    if (!path || path.length < 2) return;
+
+    ctx.strokeStyle = '#6965db';
+    ctx.lineWidth = 2 / zoom;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+
+    for (let i = 1; i < path.length; i++) {
+      ctx.lineTo(path[i].x, path[i].y);
+    }
+
+    // Close the path if we have enough points
+    if (path.length > 2) {
+      ctx.lineTo(path[0].x, path[0].y);
+    }
+
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function isPointInLasso(point, lassoPath) {
+    if (!lassoPath || lassoPath.length < 3) return false;
+
+    // Ray casting algorithm to determine if point is inside polygon
+    let inside = false;
+    for (let i = 0, j = lassoPath.length - 1; i < lassoPath.length; j = i++) {
+      if (((lassoPath[i].y > point.y) !== (lassoPath[j].y > point.y)) &&
+        (point.x < (lassoPath[j].x - lassoPath[i].x) * (point.y - lassoPath[i].y) / (lassoPath[j].y - lassoPath[i].y) + lassoPath[i].x)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  function selectElementsInLasso(lassoPath) {
+    const selectedElements = [];
+
+    strokesRef.current.forEach(element => {
+      let isSelected = false;
+
+      if (element.type === 'pen') {
+        // Check if any point of the pen stroke is inside the lasso
+        isSelected = element.points.some(point => isPointInLasso(point, lassoPath));
+      } else if (element.start && element.end) {
+        // Check if the center or corners of the shape are inside the lasso
+        const centerX = (element.start.x + element.end.x) / 2;
+        const centerY = (element.start.y + element.end.y) / 2;
+
+        isSelected = isPointInLasso({ x: centerX, y: centerY }, lassoPath) ||
+          isPointInLasso(element.start, lassoPath) ||
+          isPointInLasso(element.end, lassoPath);
+      }
+
+      if (isSelected) {
+        selectedElements.push(element);
+      }
+    });
+
+    return selectedElements;
   }
 
   function drawLastSegment(ctx, stroke) {
@@ -380,11 +543,20 @@ export default function App() {
       else if (s.type === 'rect') drawRect(ctx, s);
       else if (s.type === 'circle') drawCircle(ctx, s);
       else if (s.type === 'line') drawLine(ctx, s);
+      else if (s.type === 'arrow') drawArrow(ctx, s);
+      else if (s.type === 'diamond') drawDiamond(ctx, s);
+      else if (s.type === 'text') drawText(ctx, s);
+      else if (s.type === 'sticky') drawStickyNote(ctx, s);
     }
 
     // Draw selection box
     if (tool === 'select') {
       drawSelectionBox(ctx, selectedElementsRef.current);
+    }
+
+    // Draw lasso path while drawing
+    if (tool === 'lasso' && lassoPath.length > 0) {
+      drawLassoPath(ctx, lassoPath);
     }
 
     // Restore context
@@ -409,6 +581,9 @@ export default function App() {
     if (preview.type === 'rect') drawRect(ctx, preview);
     else if (preview.type === 'circle') drawCircle(ctx, preview);
     else if (preview.type === 'line') drawLine(ctx, preview);
+    else if (preview.type === 'arrow') drawArrow(ctx, preview);
+    else if (preview.type === 'diamond') drawDiamond(ctx, preview);
+    else if (preview.type === 'sticky') drawStickyNote(ctx, preview);
   }
 
   /* ---------- Pointer events ---------- */
@@ -503,6 +678,14 @@ export default function App() {
         return;
       }
 
+      if (tool === 'lasso') {
+        // Start lasso selection
+        drawingRef.current = true;
+        lassoPathRef.current = [p];
+        setLassoPath([p]);
+        return;
+      }
+
       redoStackRef.current = [];
 
       if (tool === 'eraser') {
@@ -521,6 +704,53 @@ export default function App() {
         strokesRef.current.push(stroke);
         drawLastSegment(ctx, stroke);
         bump();
+      } else if (tool === 'text') {
+        // For text tool, immediately create a text element and prompt for input
+        const textElement = {
+          type: 'text',
+          color,
+          width,
+          start: p,
+          end: p,
+          text: '',
+          fontSize: 16,
+          isEditing: true
+        };
+        currentStrokeRef.current = textElement;
+        strokesRef.current.push(textElement);
+
+        // Prompt for text input
+        const text = prompt('Enter text:');
+        if (text !== null) {
+          textElement.text = text;
+          textElement.isEditing = false;
+        } else {
+          // Remove if cancelled
+          strokesRef.current.pop();
+        }
+        currentStrokeRef.current = null;
+        redraw();
+        bump();
+      } else if (tool === 'sticky') {
+        // For sticky notes, create with default size and prompt for text
+        const stickyElement = {
+          type: 'sticky',
+          color,
+          width,
+          fillColor: fillColor === 'transparent' ? '#fef3c7' : fillColor,
+          start: p,
+          end: { x: p.x + 120, y: p.y + 80 },
+          text: '',
+          fontSize: 14
+        };
+
+        const text = prompt('Enter note text:');
+        if (text !== null) {
+          stickyElement.text = text;
+          strokesRef.current.push(stickyElement);
+          redraw();
+          bump();
+        }
       } else {
         const shape = { type: tool, color, width, fillColor, start: p, end: p };
         currentStrokeRef.current = shape;
@@ -553,6 +783,21 @@ export default function App() {
             element.end = { x: p.x + offset.end.x, y: p.y + offset.end.y };
           }
         });
+
+        if (!rafPendingRef.current) {
+          rafPendingRef.current = true;
+          requestAnimationFrame(() => {
+            rafPendingRef.current = false;
+            redraw();
+          });
+        }
+        return;
+      }
+
+      if (tool === 'lasso' && drawingRef.current && e.pointerId === pointerIdRef.current) {
+        // Add point to lasso path
+        lassoPathRef.current.push(p);
+        setLassoPath([...lassoPathRef.current]);
 
         if (!rafPendingRef.current) {
           rafPendingRef.current = true;
@@ -648,6 +893,22 @@ export default function App() {
         return;
       }
 
+      if (tool === 'lasso') {
+        // Complete lasso selection
+        if (lassoPathRef.current.length > 2) {
+          const selectedElements = selectElementsInLasso(lassoPathRef.current);
+          updateSelection(selectedElements);
+          setTool('select'); // Switch back to select tool
+        }
+
+        // Clear lasso path
+        lassoPathRef.current = [];
+        setLassoPath([]);
+        redraw();
+        bump();
+        return;
+      }
+
       const current = currentStrokeRef.current;
       currentStrokeRef.current = null;
 
@@ -693,6 +954,15 @@ export default function App() {
     { key: '4', action: () => setTool('circle'), description: 'Circle tool', category: 'tools' },
     { key: 'l', action: () => setTool('line'), description: 'Line tool', category: 'tools' },
     { key: '5', action: () => setTool('line'), description: 'Line tool', category: 'tools' },
+    { key: 'a', action: (e) => !e.ctrlKey && !e.metaKey && setTool('arrow'), description: 'Arrow tool', category: 'tools' },
+    { key: 'd', action: (e) => !e.ctrlKey && !e.metaKey && setTool('diamond'), description: 'Diamond tool', category: 'tools' },
+    { key: '3', action: () => setTool('diamond'), description: 'Diamond tool', category: 'tools' },
+    { key: 't', action: () => setTool('text'), description: 'Text tool', category: 'tools' },
+    { key: '8', action: () => setTool('text'), description: 'Text tool', category: 'tools' },
+    { key: 'i', action: () => setTool('image'), description: 'Image tool', category: 'tools' },
+    { key: '9', action: () => setTool('image'), description: 'Image tool', category: 'tools' },
+    { key: 'n', action: () => setTool('sticky'), description: 'Sticky note tool', category: 'tools' },
+    { key: 'h', action: () => setTool('hand'), description: 'Hand tool', category: 'tools' },
     { key: 'e', action: () => setTool('eraser'), description: 'Eraser tool', category: 'tools' },
 
     // Selection and deletion
@@ -1115,8 +1385,68 @@ export default function App() {
 
 
 
-  // Add state for settings panel
+  // Add state for settings panel and new tools
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [isCanvasLocked, setIsCanvasLocked] = useState(false);
+  const [showMoreDropdown, setShowMoreDropdown] = useState(false);
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [aiModalType, setAIModalType] = useState('');
+  const [textInput, setTextInput] = useState('');
+  const imageInputRef = useRef(null);
+
+  // Lasso selection state
+  const [lassoPath, setLassoPath] = useState([]);
+  const lassoPathRef = useRef([]);
+
+  // New tool functions
+  const handleImageUpload = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFile = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      // Create image element and add to canvas
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const imageElement = {
+            type: 'image',
+            x: 100,
+            y: 100,
+            width: img.width,
+            height: img.height,
+            src: e.target.result,
+            color: color,
+            width: width
+          };
+          strokesRef.current.push(imageElement);
+          redraw();
+          bump();
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const openAIModal = (type) => {
+    setAIModalType(type);
+    setShowAIModal(true);
+    setTextInput('');
+  };
+
+  const handleAIGenerate = () => {
+    // Placeholder for AI functionality
+    console.log(`AI Generate ${aiModalType}:`, textInput);
+    setShowAIModal(false);
+    // Here you would integrate with AI services
+  };
+
+  const toggleCanvasLock = () => {
+    setIsCanvasLocked(!isCanvasLocked);
+  };
 
   /* ---------- JSX UI ---------- */
   return (
@@ -1140,8 +1470,37 @@ export default function App() {
         style={{ touchAction: 'none' }}
       />
 
-      {/* Floating Toolbar - Center Top */}
+      {/* Comprehensive Excalidraw Toolbar - Matches Reference Image */}
       <div className="floating-toolbar">
+        {/* Lock/Unlock Canvas */}
+        <button
+          className={`tool-button ${isCanvasLocked ? 'active' : ''}`}
+          onClick={toggleCanvasLock}
+          title={`${isCanvasLocked ? 'Unlock' : 'Lock'} canvas`}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            {isCanvasLocked ? (
+              <path d="M6 10V8a6 6 0 1 1 12 0v2M6 10h12v10H6V10z" />
+            ) : (
+              <path d="M6 10V8a6 6 0 1 1 12 0v2M6 10h12v10H6V10zM15 13a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+            )}
+          </svg>
+        </button>
+
+        {/* Hand Tool (Pan) */}
+        <button
+          className={`tool-button ${tool === 'hand' ? 'active' : ''}`}
+          onClick={() => setTool('hand')}
+          title="Hand tool (H)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
+            <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2" />
+            <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8" />
+            <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+          </svg>
+        </button>
+
         {/* Selection Tool */}
         <button
           className={`tool-button ${tool === 'select' ? 'active' : ''}`}
@@ -1153,16 +1512,7 @@ export default function App() {
           </svg>
         </button>
 
-        {/* Pen Tool */}
-        <button
-          className={`tool-button ${tool === 'pen' ? 'active' : ''}`}
-          onClick={() => setTool('pen')}
-          title="Pen tool (P)"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-          </svg>
-        </button>
+
 
         {/* Rectangle Tool */}
         <button
@@ -1175,14 +1525,37 @@ export default function App() {
           </svg>
         </button>
 
-        {/* Circle Tool */}
+        {/* Ellipse Tool */}
         <button
           className={`tool-button ${tool === 'circle' ? 'active' : ''}`}
           onClick={() => setTool('circle')}
-          title="Circle tool (O)"
+          title="Ellipse tool (O)"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
+          </svg>
+        </button>
+
+        {/* Diamond Tool */}
+        <button
+          className={`tool-button ${tool === 'diamond' ? 'active' : ''}`}
+          onClick={() => setTool('diamond')}
+          title="Diamond tool (D)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M6 3h12l4 6-10 13L2 9l4-6z" />
+          </svg>
+        </button>
+
+        {/* Arrow Tool */}
+        <button
+          className={`tool-button ${tool === 'arrow' ? 'active' : ''}`}
+          onClick={() => setTool('arrow')}
+          title="Arrow tool (A)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="7" y1="17" x2="17" y2="7" />
+            <polyline points="7,7 17,7 17,17" />
           </svg>
         </button>
 
@@ -1196,6 +1569,165 @@ export default function App() {
             <line x1="7" y1="17" x2="17" y2="7" />
           </svg>
         </button>
+
+        {/* Pen Tool */}
+        <button
+          className={`tool-button ${tool === 'pen' ? 'active' : ''}`}
+          onClick={() => setTool('pen')}
+          title="Pen tool (P)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+          </svg>
+        </button>
+
+        {/* Text Tool */}
+        <button
+          className={`tool-button ${tool === 'text' ? 'active' : ''}`}
+          onClick={() => setTool('text')}
+          title="Text tool (T)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="4,7 4,4 20,4 20,7" />
+            <line x1="9" y1="20" x2="15" y2="20" />
+            <line x1="12" y1="4" x2="12" y2="20" />
+          </svg>
+        </button>
+
+        {/* Image Tool */}
+        <button
+          className={`tool-button ${tool === 'image' ? 'active' : ''}`}
+          onClick={() => { setTool('image'); handleImageUpload(); }}
+          title="Image tool (I)"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="M21 15l-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+          </svg>
+        </button>
+
+        {/* Sticky Note Tool */}
+        <button
+          className={`tool-button ${tool === 'sticky' ? 'active' : ''}`}
+          onClick={() => setTool('sticky')}
+          title="Sticky note"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8l-5-5z" />
+            <polyline points="16,3 16,8 21,8" />
+          </svg>
+        </button>
+
+        {/* More Options Dropdown */}
+        <div className="dropdown-wrapper">
+          <button
+            className="tool-button"
+            onClick={() => setShowMoreDropdown(!showMoreDropdown)}
+            title="More options"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="1" />
+              <circle cx="12" cy="5" r="1" />
+              <circle cx="12" cy="19" r="1" />
+            </svg>
+          </button>
+
+          {showMoreDropdown && (
+            <div className="dropdown-menu">
+              <button
+                className="dropdown-item"
+                onClick={() => { setTool('frame'); setShowMoreDropdown(false); }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="22" y1="6" x2="2" y2="6" />
+                  <line x1="22" y1="18" x2="2" y2="18" />
+                  <line x1="6" y1="2" x2="6" y2="22" />
+                  <line x1="18" y1="2" x2="18" y2="22" />
+                </svg>
+                Frame tool
+                <span className="shortcut-hint">F</span>
+              </button>
+
+              <button
+                className="dropdown-item"
+                onClick={() => { setTool('embed'); setShowMoreDropdown(false); }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="16,18 22,12 16,6" />
+                  <polyline points="8,6 2,12 8,18" />
+                </svg>
+                Web Embed
+              </button>
+
+              <button
+                className="dropdown-item"
+                onClick={() => { setTool('laser'); setShowMoreDropdown(false); }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+                  <path d="M9 18h6" />
+                  <path d="M10 22h4" />
+                </svg>
+                Laser pointer
+                <span className="shortcut-hint">K</span>
+              </button>
+
+              <button
+                className="dropdown-item"
+                onClick={() => { setTool('lasso'); setShowMoreDropdown(false); }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+                  <path d="M13 13l6 6" />
+                </svg>
+                Lasso selection
+              </button>
+
+              <div className="dropdown-separator" />
+
+              <div className="dropdown-section-title">Generate</div>
+
+              <button
+                className="dropdown-item ai-item"
+                onClick={() => { openAIModal('text-to-diagram'); setShowMoreDropdown(false); }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                  <polyline points="14,2 14,8 20,8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10,9 9,9 8,9" />
+                </svg>
+                Text to diagram
+                <span className="ai-badge">AI</span>
+              </button>
+
+              <button
+                className="dropdown-item"
+                onClick={() => { openAIModal('mermaid-to-excalidraw'); setShowMoreDropdown(false); }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9,11 12,14 22,4" />
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                </svg>
+                Mermaid to Excalidraw
+              </button>
+
+              <button
+                className="dropdown-item ai-item"
+                onClick={() => { openAIModal('wireframe-to-code'); setShowMoreDropdown(false); }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="16,18 22,12 16,6" />
+                  <polyline points="8,6 2,12 8,18" />
+                </svg>
+                Wireframe to code
+                <span className="ai-badge">AI</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Eraser Tool */}
         <button
@@ -1259,6 +1791,15 @@ export default function App() {
           </svg>
         </button>
       </div>
+
+      {/* Hidden Image Input */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageFile}
+        style={{ display: 'none' }}
+      />
 
       {/* Hamburger Menu - Top Left */}
       <button
@@ -1687,6 +2228,70 @@ export default function App() {
                   <div className="tip-item">• Two-finger scroll on trackpads provides smooth panning</div>
                   <div className="tip-item">• Press Escape to quickly switch back to selection tool</div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Generation Modal */}
+      {showAIModal && (
+        <div className="modal-overlay" onClick={() => setShowAIModal(false)}>
+          <div className="modal-content ai-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">
+                {aiModalType === 'text-to-diagram' && 'Text to Diagram (AI)'}
+                {aiModalType === 'mermaid-to-excalidraw' && 'Mermaid to Excalidraw'}
+                {aiModalType === 'wireframe-to-code' && 'Wireframe to Code (AI)'}
+              </h2>
+              <button className="modal-close" onClick={() => setShowAIModal(false)}>
+                ×
+              </button>
+            </div>
+
+            <div className="ai-modal-content">
+              <div className="ai-input-section">
+                <label className="ai-input-label">
+                  {aiModalType === 'text-to-diagram' && 'Describe the diagram you want to create:'}
+                  {aiModalType === 'mermaid-to-excalidraw' && 'Paste your Mermaid syntax:'}
+                  {aiModalType === 'wireframe-to-code' && 'Describe the wireframe or UI you want to convert:'}
+                </label>
+                <textarea
+                  className="ai-input-textarea"
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  placeholder={
+                    aiModalType === 'text-to-diagram'
+                      ? 'e.g., "Create a flowchart showing user login process with decision points"'
+                      : aiModalType === 'mermaid-to-excalidraw'
+                        ? 'graph TD\n    A[Start] --> B{Decision}\n    B -->|Yes| C[Action]\n    B -->|No| D[End]'
+                        : 'e.g., "Convert this wireframe into React components with Tailwind CSS"'
+                  }
+                  rows={6}
+                />
+              </div>
+
+              <div className="ai-modal-actions">
+                <button
+                  className="ai-cancel-button"
+                  onClick={() => setShowAIModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="ai-generate-button"
+                  onClick={handleAIGenerate}
+                  disabled={!textInput.trim()}
+                >
+                  Generate
+                </button>
+              </div>
+
+              <div className="ai-modal-note">
+                <p>
+                  <strong>Note:</strong> AI features are currently in development.
+                  This will integrate with AI services to generate diagrams and code.
+                </p>
               </div>
             </div>
           </div>
