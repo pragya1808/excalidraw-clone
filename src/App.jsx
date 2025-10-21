@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
+import { useShortcuts, createShortcut, formatShortcut } from './hooks/useShortcuts';
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -679,7 +680,133 @@ export default function App() {
     redraw();
   }, [showGrid, zoom, panX, panY]);
 
-  // Comprehensive Excalidraw-style keyboard shortcuts
+  // Keyboard shortcuts system
+  const shortcuts = [
+    // Tool switching shortcuts (only when no modifiers are pressed)
+    { key: 'v', action: (e) => !e.ctrlKey && !e.metaKey && setTool('select'), description: 'Selection tool', category: 'tools' },
+    { key: '1', action: () => setTool('select'), description: 'Selection tool', category: 'tools' },
+    { key: 'p', action: () => setTool('pen'), description: 'Pen tool', category: 'tools' },
+    { key: '2', action: () => setTool('pen'), description: 'Pen tool', category: 'tools' },
+    { key: 'r', action: () => setTool('rect'), description: 'Rectangle tool', category: 'tools' },
+    { key: '3', action: () => setTool('rect'), description: 'Rectangle tool', category: 'tools' },
+    { key: 'o', action: () => setTool('circle'), description: 'Circle tool', category: 'tools' },
+    { key: '4', action: () => setTool('circle'), description: 'Circle tool', category: 'tools' },
+    { key: 'l', action: () => setTool('line'), description: 'Line tool', category: 'tools' },
+    { key: '5', action: () => setTool('line'), description: 'Line tool', category: 'tools' },
+    { key: 'e', action: () => setTool('eraser'), description: 'Eraser tool', category: 'tools' },
+
+    // Selection and deletion
+    { key: 'delete', action: () => selectedElementsRef.current.length > 0 && deleteSelected(), description: 'Delete selected', category: 'selection' },
+    { key: 'backspace', action: () => selectedElementsRef.current.length > 0 && deleteSelected(), description: 'Delete selected', category: 'selection' },
+    createShortcut({ key: 'a', ctrlKey: true, action: () => { updateSelection([...strokesRef.current]); setTool('select'); redraw(); bump(); }, description: 'Select all', category: 'selection' }),
+    { key: 'escape', action: () => { if (showHelpModal) setShowHelpModal(false); else { updateSelection([]); setTool('select'); redraw(); bump(); } }, description: 'Clear selection & select tool', category: 'selection' },
+
+    // Undo/Redo
+    createShortcut({ key: 'z', ctrlKey: true, action: () => undo(), description: 'Undo', category: 'editor' }),
+    createShortcut({ key: 'z', ctrlKey: true, shiftKey: true, action: () => redo(), description: 'Redo', category: 'editor' }),
+    createShortcut({ key: 'y', ctrlKey: true, action: () => redo(), description: 'Redo', category: 'editor' }),
+
+    // Zoom and view
+    createShortcut({ key: '=', ctrlKey: true, action: () => zoomIn(), description: 'Zoom in', category: 'view' }),
+    createShortcut({ key: '+', ctrlKey: true, action: () => zoomIn(), description: 'Zoom in', category: 'view' }),
+    createShortcut({ key: '-', ctrlKey: true, action: () => zoomOut(), description: 'Zoom out', category: 'view' }),
+    createShortcut({ key: '0', ctrlKey: true, action: () => resetView(), description: 'Reset view', category: 'view' }),
+    createShortcut({ key: '1', ctrlKey: true, action: () => zoomToFit(), description: 'Zoom to fit', category: 'view' }),
+
+    // Help
+    { key: '?', action: () => setShowHelpModal(true), description: 'Show help', category: 'help' },
+    { key: '/', shiftKey: true, action: () => setShowHelpModal(true), description: 'Show help', category: 'help' },
+    { key: 'F1', action: () => setShowHelpModal(true), description: 'Show help', category: 'help' },
+
+    // File operations
+    createShortcut({ key: 's', ctrlKey: true, action: () => saveAsJSON(), description: 'Save', category: 'file' }),
+
+    // Clipboard operations (basic implementation)
+    createShortcut({
+      key: 'c', ctrlKey: true, action: () => {
+        if (selectedElementsRef.current.length > 0) {
+          // Copy selected elements to clipboard (simplified)
+          const selectedData = selectedElementsRef.current.map(element => ({ ...element }));
+          localStorage.setItem('excalidraw-clipboard', JSON.stringify(selectedData));
+        }
+      }, description: 'Copy', category: 'editor'
+    }),
+
+    createShortcut({
+      key: 'x', ctrlKey: true, action: () => {
+        if (selectedElementsRef.current.length > 0) {
+          // Cut selected elements (copy then delete)
+          const selectedData = selectedElementsRef.current.map(element => ({ ...element }));
+          localStorage.setItem('excalidraw-clipboard', JSON.stringify(selectedData));
+          deleteSelected();
+        }
+      }, description: 'Cut', category: 'editor'
+    }),
+
+    createShortcut({
+      key: 'v', ctrlKey: true, action: () => {
+        try {
+          const clipboardData = localStorage.getItem('excalidraw-clipboard');
+          if (clipboardData) {
+            const elements = JSON.parse(clipboardData);
+            // Offset pasted elements slightly
+            const offsetElements = elements.map(element => {
+              if (element.type === 'pen') {
+                return {
+                  ...element,
+                  points: element.points.map(pt => ({ x: pt.x + 20, y: pt.y + 20 }))
+                };
+              } else if (element.start && element.end) {
+                return {
+                  ...element,
+                  start: { x: element.start.x + 20, y: element.start.y + 20 },
+                  end: { x: element.end.x + 20, y: element.end.y + 20 }
+                };
+              }
+              return element;
+            });
+            strokesRef.current.push(...offsetElements);
+            updateSelection(offsetElements);
+            redraw();
+            bump();
+          }
+        } catch (e) {
+          console.warn('Failed to paste:', e);
+        }
+      }, description: 'Paste', category: 'editor'
+    }),
+
+    createShortcut({
+      key: 'd', ctrlKey: true, action: () => {
+        if (selectedElementsRef.current.length > 0) {
+          // Duplicate selected elements
+          const duplicatedElements = selectedElementsRef.current.map(element => {
+            if (element.type === 'pen') {
+              return {
+                ...element,
+                points: element.points.map(pt => ({ x: pt.x + 20, y: pt.y + 20 }))
+              };
+            } else if (element.start && element.end) {
+              return {
+                ...element,
+                start: { x: element.start.x + 20, y: element.start.y + 20 },
+                end: { x: element.end.x + 20, y: element.end.y + 20 }
+              };
+            }
+            return { ...element };
+          });
+          strokesRef.current.push(...duplicatedElements);
+          updateSelection(duplicatedElements);
+          redraw();
+          bump();
+        }
+      }, description: 'Duplicate', category: 'editor'
+    }),
+  ];
+
+  useShortcuts(shortcuts);
+
+  // Handle Space and Shift keys separately for pan mode and constraints
   useEffect(() => {
     function handleKeyDown(e) {
       // Prevent shortcuts when typing in input fields
@@ -699,182 +826,6 @@ export default function App() {
         setIsShiftPressed(true);
         return;
       }
-
-      // Selection & Deletion shortcuts
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedElementsRef.current.length > 0) {
-          e.preventDefault();
-          deleteSelected();
-        }
-        return;
-      }
-
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        if (showHelpModal) {
-          setShowHelpModal(false);
-        } else {
-          updateSelection([]);
-          setTool('select'); // Switch to selection tool like Excalidraw
-          redraw();
-          bump();
-        }
-        return;
-      }
-
-      // Modifier key combinations
-      if (e.ctrlKey || e.metaKey) {
-        switch (e.key.toLowerCase()) {
-          // Undo/Redo
-          case 'z':
-            e.preventDefault();
-            if (e.shiftKey) {
-              redo(); // Ctrl+Shift+Z
-            } else {
-              undo(); // Ctrl+Z
-            }
-            break;
-
-          case 'y':
-            e.preventDefault();
-            redo(); // Ctrl+Y
-            break;
-
-          // Selection
-          case 'a':
-            e.preventDefault();
-            updateSelection([...strokesRef.current]);
-            setTool('select');
-            redraw();
-            bump();
-            break;
-
-          // Zoom controls
-          case '=':
-          case '+':
-            e.preventDefault();
-            zoomIn();
-            break;
-
-          case '-':
-            e.preventDefault();
-            zoomOut();
-            break;
-
-          case '0':
-            e.preventDefault();
-            resetView();
-            break;
-
-          case '1':
-            e.preventDefault();
-            zoomToFit();
-            break;
-
-          // File operations (optional - can be added later)
-          case 's':
-            e.preventDefault();
-            // Could trigger save functionality
-            break;
-        }
-        return;
-      }
-
-      // Tool switching shortcuts (without modifiers)
-      switch (e.key.toLowerCase()) {
-        case 'v':
-          e.preventDefault();
-          setTool('select');
-          break;
-
-        case 'p':
-          e.preventDefault();
-          if (e.shiftKey) {
-            // Shift+P opens help menu
-            setShowHelpModal(true);
-          } else {
-            // P sets pen tool
-            setTool('pen');
-          }
-          break;
-
-        case 'd':
-          e.preventDefault();
-          setTool('pen');
-          break;
-
-        case 'r':
-          e.preventDefault();
-          setTool('rect');
-          break;
-
-        case 'o':
-          e.preventDefault();
-          setTool('circle');
-          break;
-
-        case 'l':
-          e.preventDefault();
-          setTool('line');
-          break;
-
-        case 'e':
-          e.preventDefault();
-          setTool('eraser');
-          break;
-
-        // Number keys for quick tool access
-        case '1':
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            setTool('select');
-          }
-          break;
-
-        case '2':
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            setTool('pen');
-          }
-          break;
-
-        case '3':
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            setTool('rect');
-          }
-          break;
-
-        case '4':
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            setTool('circle');
-          }
-          break;
-
-        case '5':
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            setTool('line');
-          }
-          break;
-
-        // Help shortcuts
-        case '?':
-        case '/':
-          if (e.shiftKey) { // Shift+? or Shift+/
-            e.preventDefault();
-            setShowHelpModal(true);
-          }
-          break;
-
-        case 'F1':
-          e.preventDefault();
-          setShowHelpModal(true);
-          break;
-
-
-      }
     }
 
     function handleKeyUp(e) {
@@ -892,7 +843,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [isSpacePressed, isShiftPressed]);
 
   // Wheel event for zooming and trackpad panning
   useEffect(() => {
@@ -1470,10 +1421,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Help Modal */}
+      {/* Comprehensive Help Modal */}
       {showHelpModal && (
         <div className="modal-overlay" onClick={() => setShowHelpModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content help-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Keyboard Shortcuts & Help</h2>
               <button className="modal-close" onClick={() => setShowHelpModal(false)}>
@@ -1481,101 +1432,261 @@ export default function App() {
               </button>
             </div>
 
-            <div className="shortcuts-grid">
-              <div className="shortcut-action">Selection tool</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">V</span>
-                <span className="shortcut-key">1</span>
+            <div className="help-content">
+              {/* Selection & Deletion */}
+              <div className="help-section">
+                <h3 className="help-section-title">Selection & Deletion</h3>
+                <div className="shortcuts-list">
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Delete selected</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">Delete</kbd>
+                      <span className="shortcut-separator">/</span>
+                      <kbd className="shortcut-key">Backspace</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Select all</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">A</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Clear selection and select tool</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">Escape</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Multi-select</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">Shift</kbd>
+                      <span className="shortcut-text">+ Click</span>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Add/Remove from selection</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <span className="shortcut-text">+ Click</span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="shortcut-action">Pen tool</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">P</span>
-                <span className="shortcut-key">2</span>
+              {/* Tool Switching */}
+              <div className="help-section">
+                <h3 className="help-section-title">Tool Switching</h3>
+                <div className="shortcuts-list">
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Selection tool</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">V</kbd>
+                      <span className="shortcut-text">or</span>
+                      <kbd className="shortcut-key">1</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Pen tool</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">P</kbd>
+                      <span className="shortcut-text">or</span>
+                      <kbd className="shortcut-key">2</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Rectangle tool</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">R</kbd>
+                      <span className="shortcut-text">or</span>
+                      <kbd className="shortcut-key">3</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Circle tool</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">O</kbd>
+                      <span className="shortcut-text">or</span>
+                      <kbd className="shortcut-key">4</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Line tool</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">L</kbd>
+                      <span className="shortcut-text">or</span>
+                      <kbd className="shortcut-key">5</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Eraser tool</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">E</kbd>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="shortcut-action">Rectangle tool</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">R</span>
-                <span className="shortcut-key">3</span>
+              {/* Zoom & Pan */}
+              <div className="help-section">
+                <h3 className="help-section-title">Zoom & Pan</h3>
+                <div className="shortcuts-list">
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Zoom in</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">=</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Zoom out</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">-</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Reset view</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">0</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Zoom to fit</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">1</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Pan canvas</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">Space</kbd>
+                      <span className="shortcut-text">+ drag</span>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Pan canvas</span>
+                    <div className="shortcut-keys">
+                      <span className="shortcut-text">Middle mouse drag</span>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Zoom at cursor</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <span className="shortcut-text">+ wheel</span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="shortcut-action">Circle tool</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">O</span>
-                <span className="shortcut-key">4</span>
+              {/* Shape Constraints */}
+              <div className="help-section">
+                <h3 className="help-section-title">Shape Constraints</h3>
+                <div className="shortcuts-list">
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Constrain aspect ratio</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">Shift</kbd>
+                      <span className="shortcut-text">+ drag</span>
+                    </div>
+                  </div>
+                  <div className="shortcut-constraint-details">
+                    <div className="constraint-detail">• Rectangles → Squares</div>
+                    <div className="constraint-detail">• Circles → Perfect circles</div>
+                    <div className="constraint-detail">• Lines → 45° angles</div>
+                  </div>
+                </div>
               </div>
 
-              <div className="shortcut-action">Line tool</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">L</span>
-                <span className="shortcut-key">5</span>
+              {/* Editor Actions */}
+              <div className="help-section">
+                <h3 className="help-section-title">Editor Actions</h3>
+                <div className="shortcuts-list">
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Undo</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">Z</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Redo</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">Shift</kbd>
+                      <kbd className="shortcut-key">Z</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Copy</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">C</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Cut</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">X</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Paste</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">V</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Duplicate</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">D</kbd>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="shortcut-action">Eraser tool</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">E</span>
+              {/* Help & Misc */}
+              <div className="help-section">
+                <h3 className="help-section-title">Help & Misc</h3>
+                <div className="shortcuts-list">
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Show this help</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">?</kbd>
+                      <span className="shortcut-separator">/</span>
+                      <kbd className="shortcut-key">F1</kbd>
+                      <span className="shortcut-separator">/</span>
+                      <kbd className="shortcut-key">Shift</kbd>
+                      <kbd className="shortcut-key">?</kbd>
+                    </div>
+                  </div>
+                  <div className="shortcut-item">
+                    <span className="shortcut-description">Save</span>
+                    <div className="shortcut-keys">
+                      <kbd className="shortcut-key">{navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}</kbd>
+                      <kbd className="shortcut-key">S</kbd>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="shortcut-action">Undo</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">Ctrl</span>
-                <span className="shortcut-key">Z</span>
-              </div>
-
-              <div className="shortcut-action">Redo</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">Ctrl</span>
-                <span className="shortcut-key">Shift</span>
-                <span className="shortcut-key">Z</span>
-              </div>
-
-              <div className="shortcut-action">Select all</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">Ctrl</span>
-                <span className="shortcut-key">A</span>
-              </div>
-
-              <div className="shortcut-action">Delete selected</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">Del</span>
-              </div>
-
-              <div className="shortcut-action">Pan canvas</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">Space</span>
-                <span>+ drag</span>
-              </div>
-
-              <div className="shortcut-action">Constrain shapes</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">Shift</span>
-                <span>+ drag</span>
-              </div>
-
-              <div className="shortcut-action">Zoom in</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">Ctrl</span>
-                <span className="shortcut-key">+</span>
-              </div>
-
-              <div className="shortcut-action">Zoom out</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">Ctrl</span>
-                <span className="shortcut-key">-</span>
-              </div>
-
-              <div className="shortcut-action">Reset view</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">Ctrl</span>
-                <span className="shortcut-key">0</span>
-              </div>
-
-
-
-              <div className="shortcut-action">Show help</div>
-              <div className="shortcut-keys">
-                <span className="shortcut-key">?</span>
+              {/* Tips Section */}
+              <div className="help-section tips-section">
+                <h3 className="help-section-title">Tips</h3>
+                <div className="tips-list">
+                  <div className="tip-item">• Use the grid for precise alignment</div>
+                  <div className="tip-item">• Hold Shift while drawing shapes to maintain aspect ratio</div>
+                  <div className="tip-item">• Use {navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd' : 'Ctrl'}+A to select all, then move everything at once</div>
+                  <div className="tip-item">• Two-finger scroll on trackpads provides smooth panning</div>
+                  <div className="tip-item">• Press Escape to quickly switch back to selection tool</div>
+                </div>
               </div>
             </div>
           </div>
