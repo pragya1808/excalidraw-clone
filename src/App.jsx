@@ -12,6 +12,9 @@ export default function App() {
   const pointerIdRef = useRef(null);
   const redoStackRef = useRef([]);
   const rafPendingRef = useRef(false);
+  const lastDrawTimeRef = useRef(0);
+  const drawingContextRef = useRef(null);
+  const redrawTimeoutRef = useRef(null);
   const selectedElementsRef = useRef([]);
   const dragStartRef = useRef(null);
   const dragOffsetRef = useRef([]);
@@ -32,7 +35,14 @@ export default function App() {
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const [theme, setTheme] = useState('light');
+  // Initialize theme from localStorage or system preference
+  const getInitialTheme = () => {
+    const savedTheme = localStorage.getItem('excalidraw-theme');
+    if (savedTheme) return savedTheme;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  };
+
+  const [theme, setTheme] = useState(getInitialTheme);
   const eraseSize = 15; // fixed eraser size
   const [version, setVersion] = useState(0);
   function bump() { setVersion(v => v + 1); }
@@ -41,7 +51,15 @@ export default function App() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+
+    // Get context with performance optimizations
+    const ctx = canvas.getContext('2d', {
+      alpha: false, // No transparency needed
+      desynchronized: true, // Better performance
+      willReadFrequently: false // We don't read pixels frequently
+    });
+
+    drawingContextRef.current = ctx;
 
     function resize() {
       const toolbarHeight = toolbarRef.current ? toolbarRef.current.offsetHeight : 0;
@@ -54,7 +72,9 @@ export default function App() {
       canvas.width = Math.floor(w * DPR);
       canvas.height = Math.floor(h * DPR);
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      redraw();
+
+      // Use RAF for resize redraw to avoid blocking
+      requestAnimationFrame(() => redraw());
     }
 
     window.addEventListener('resize', resize);
@@ -160,13 +180,44 @@ export default function App() {
 
   function drawPenStroke(ctx, stroke) {
     if (!stroke.points?.length) return;
+
     ctx.lineJoin = ctx.lineCap = 'round';
     ctx.strokeStyle = stroke.color;
     ctx.lineWidth = stroke.width;
-    ctx.beginPath();
+
     const pts = stroke.points;
+    if (pts.length < 2) {
+      // Single point
+      ctx.beginPath();
+      ctx.arc(pts[0].x, pts[0].y, stroke.width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
+    if (pts.length === 2) {
+      // Simple line for two points
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      ctx.lineTo(pts[1].x, pts[1].y);
+      ctx.stroke();
+      return;
+    }
+
+    // Smooth curve for multiple points using quadratic curves
+    ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+
+    for (let i = 1; i < pts.length - 1; i++) {
+      const currentPoint = pts[i];
+      const nextPoint = pts[i + 1];
+      const controlX = (currentPoint.x + nextPoint.x) / 2;
+      const controlY = (currentPoint.y + nextPoint.y) / 2;
+      ctx.quadraticCurveTo(currentPoint.x, currentPoint.y, controlX, controlY);
+    }
+
+    // Draw to the last point
+    const lastPoint = pts[pts.length - 1];
+    ctx.lineTo(lastPoint.x, lastPoint.y);
     ctx.stroke();
   }
 
@@ -254,23 +305,66 @@ export default function App() {
 
   function drawLastSegment(ctx, stroke) {
     const pts = stroke.points;
-    if (pts.length < 2) return drawPenStroke(ctx, stroke);
+    if (pts.length < 2) return;
+
+    // Save context state
+    ctx.save();
+
+    // Apply transformations
+    ctx.translate(panX, panY);
+    ctx.scale(zoom, zoom);
+
     const a = pts[pts.length - 2];
     const b = pts[pts.length - 1];
     ctx.lineJoin = ctx.lineCap = 'round';
     ctx.strokeStyle = stroke.color;
-    ctx.lineWidth = stroke.width;
+    ctx.lineWidth = stroke.width / zoom;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
+
+    // Restore context state
+    ctx.restore();
   }
 
-  function redraw() {
+  function drawIncrementalPenStroke(ctx, stroke, fromIndex = 0) {
+    if (!stroke.points?.length || fromIndex >= stroke.points.length) return;
+
+    ctx.save();
+    ctx.translate(panX, panY);
+    ctx.scale(zoom, zoom);
+
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth = stroke.width / zoom;
+    ctx.beginPath();
+
+    if (fromIndex === 0) {
+      const pts = stroke.points;
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+    } else {
+      // Draw only new segments
+      const pts = stroke.points;
+      ctx.moveTo(pts[fromIndex - 1].x, pts[fromIndex - 1].y);
+      for (let i = fromIndex; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+    }
+
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function redraw(skipCurrentStroke = false) {
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
+    const ctx = drawingContextRef.current || canvas.getContext('2d');
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Set canvas background based on theme
+    // Set canvas background based on current theme
     const canvasBackground = theme === 'dark' ? '#121212' : '#ffffff';
     ctx.fillStyle = canvasBackground;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -283,8 +377,12 @@ export default function App() {
     // Draw grid
     drawGrid(ctx, canvas);
 
-    // Draw all strokes
-    for (const s of strokesRef.current) {
+    // Draw all strokes (skip current stroke if specified for performance)
+    const strokes = skipCurrentStroke && currentStrokeRef.current
+      ? strokesRef.current.filter(s => s !== currentStrokeRef.current)
+      : strokesRef.current;
+
+    for (const s of strokes) {
       ctx.lineJoin = ctx.lineCap = 'round';
       ctx.strokeStyle = s.color || '#000';
       ctx.lineWidth = (s.width || 1) / zoom; // Adjust line width for zoom
@@ -302,6 +400,16 @@ export default function App() {
 
     // Restore context
     ctx.restore();
+  }
+
+  function debouncedRedraw(delay = 16) {
+    if (redrawTimeoutRef.current) {
+      clearTimeout(redrawTimeoutRef.current);
+    }
+    redrawTimeoutRef.current = setTimeout(() => {
+      redraw();
+      redrawTimeoutRef.current = null;
+    }, delay);
   }
 
   function drawPreview(ctx, preview) {
@@ -485,8 +593,36 @@ export default function App() {
       if (!current) return;
 
       if (current.type === 'pen') {
-        current.points.push(p);
-        drawLastSegment(ctx, current);
+        // Filter points by distance to reduce data and improve performance
+        const lastPoint = current.points[current.points.length - 1];
+        const minDistance = 2; // Minimum distance between points
+
+        if (!lastPoint ||
+          Math.abs(p.x - lastPoint.x) >= minDistance ||
+          Math.abs(p.y - lastPoint.y) >= minDistance) {
+
+          current.points.push(p);
+
+          // Throttle drawing for better performance
+          const now = performance.now();
+          const timeSinceLastDraw = now - lastDrawTimeRef.current;
+
+          // Only draw if enough time has passed (8ms = ~120fps for smoother drawing)
+          if (timeSinceLastDraw >= 8) {
+            drawLastSegment(ctx, current);
+            lastDrawTimeRef.current = now;
+          } else {
+            // Queue the draw for the next frame
+            if (!rafPendingRef.current) {
+              rafPendingRef.current = true;
+              requestAnimationFrame(() => {
+                rafPendingRef.current = false;
+                drawLastSegment(ctx, current);
+                lastDrawTimeRef.current = performance.now();
+              });
+            }
+          }
+        }
       } else {
         // Apply aspect ratio constraint when Shift is held
         current.end = constrainAspectRatio(current.start, p, current.type);
@@ -553,25 +689,20 @@ export default function App() {
   // Redraw when grid setting changes or zoom/pan changes
   useEffect(() => {
     redraw();
-  }, [showGrid, zoom, panX, panY]);
+  }, [showGrid, zoom, panX, panY, theme]);
 
   // Theme management
   useEffect(() => {
-    // Load theme from localStorage or system preference
-    const savedTheme = localStorage.getItem('excalidraw-theme');
-    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    const initialTheme = savedTheme || systemTheme;
-
-    setTheme(initialTheme);
-    document.documentElement.setAttribute('data-theme', initialTheme);
+    // Set initial theme attribute
+    document.documentElement.setAttribute('data-theme', theme);
 
     // Listen for system theme changes
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleThemeChange = (e) => {
+      // Only follow system theme if user hasn't manually set a theme
       if (!localStorage.getItem('excalidraw-theme')) {
         const newTheme = e.matches ? 'dark' : 'light';
         setTheme(newTheme);
-        document.documentElement.setAttribute('data-theme', newTheme);
       }
     };
 
@@ -583,7 +714,14 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('excalidraw-theme', theme);
-    redraw(); // Redraw to update colors
+
+    // Force canvas redraw with new theme colors
+    const canvas = canvasRef.current;
+    if (canvas) {
+      requestAnimationFrame(() => {
+        redraw();
+      });
+    }
   }, [theme]);
 
   // Comprehensive Excalidraw-style keyboard shortcuts
@@ -1262,7 +1400,7 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '600' }}>Keyboard Shortcuts & Help</h2>
+              <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Keyboard Shortcuts & Help</h2>
               <button
                 onClick={() => setShowHelpModal(false)}
                 style={{
@@ -1281,7 +1419,7 @@ export default function App() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', fontSize: '14px' }}>
               {/* Selection & Deletion */}
               <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Selection & Deletion</h3>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Selection & Deletion</h3>
                 <div style={{ lineHeight: '1.6' }}>
                   <div><kbd>Delete</kbd> / <kbd>Backspace</kbd> → Delete selected</div>
                   <div><kbd>Ctrl/Cmd + A</kbd> → Select all</div>
@@ -1293,7 +1431,7 @@ export default function App() {
 
               {/* Undo/Redo */}
               <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Undo & Redo</h3>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Undo & Redo</h3>
                 <div style={{ lineHeight: '1.6' }}>
                   <div><kbd>Ctrl/Cmd + Z</kbd> → Undo</div>
                   <div><kbd>Ctrl/Cmd + Shift + Z</kbd> → Redo</div>
@@ -1303,7 +1441,7 @@ export default function App() {
 
               {/* Tool Switching */}
               <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Tool Switching</h3>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Tool Switching</h3>
                 <div style={{ lineHeight: '1.6' }}>
                   <div><kbd>V</kbd> or <kbd>1</kbd> → Selection tool</div>
                   <div><kbd>P</kbd> / <kbd>D</kbd> or <kbd>2</kbd> → Pen tool</div>
@@ -1316,7 +1454,7 @@ export default function App() {
 
               {/* Zoom & Pan */}
               <div>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#333' }}>Zoom & Pan</h3>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: 'var(--color-text-primary)' }}>Zoom & Pan</h3>
                 <div style={{ lineHeight: '1.6' }}>
                   <div><kbd>Ctrl/Cmd + +</kbd> → Zoom in</div>
                   <div><kbd>Ctrl/Cmd + -</kbd> → Zoom out</div>
