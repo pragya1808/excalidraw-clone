@@ -23,6 +23,7 @@ export default function App() {
   const isPanningRef = useRef(false);
   const panStartRef = useRef(null);
   const lastPanRef = useRef({ x: 0, y: 0 });
+  const lassoPathRef = useRef([]);
 
   // UI state
   const [color, setColor] = useState('#1e1e1e'); // Official Excalidraw black
@@ -37,9 +38,16 @@ export default function App() {
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [lassoPath, setLassoPath] = useState([]);
   const eraseSize = 15; // fixed eraser size
   const [version, setVersion] = useState(0);
   function bump() { setVersion(v => v + 1); }
+
+  // Helper function to update selection
+  function updateSelection(elements) {
+    selectedElementsRef.current = elements;
+    setSelectedCount(elements.length);
+  }
 
   // Resize + DPR handling
   useEffect(() => {
@@ -934,7 +942,7 @@ export default function App() {
       canvas.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
     };
-  }, [tool, color, width]);
+  }, [tool, color, width, fillColor, isSpacePressed, panX, panY, zoom]);
 
   // Redraw when grid setting changes or zoom/pan changes
   useEffect(() => {
@@ -1370,11 +1378,6 @@ export default function App() {
     bump();
   }
 
-  function updateSelection(newSelection) {
-    selectedElementsRef.current = newSelection;
-    setSelectedCount(newSelection.length);
-  }
-
   function clear() {
     strokesRef.current = [];
     redoStackRef.current = [];
@@ -1393,10 +1396,6 @@ export default function App() {
   const [aiModalType, setAIModalType] = useState('');
   const [textInput, setTextInput] = useState('');
   const imageInputRef = useRef(null);
-
-  // Lasso selection state
-  const [lassoPath, setLassoPath] = useState([]);
-  const lassoPathRef = useRef([]);
 
   // New tool functions
   const handleImageUpload = () => {
